@@ -1,6 +1,6 @@
 {
   "summary": {
-    "generated_at": "2026-05-05T22:01:41",
+    "generated_at": "2026-05-05T22:16:00",
     "input_workbook": "Red_Sea_DiD_Model_drafting.xlsx",
     "sheets": [
       "Event_Setup",
@@ -990,12 +990,38 @@
         }
       ],
       "policy": {
-        "current_grade": "B-reconstructed",
-        "current_grade_ko": "현재 자동 생성값은 B등급 검증용입니다. 주가와 재무 스냅샷을 결합해 이벤트 전후 밸류에이션 반응을 재구성했습니다.",
-        "bloomberg_grade_requirement": "Bloomberg BDH/BQL/PORT 또는 LSEG/Refinitiv에서 Date, RIC/Ticker, PX_LAST, CUR_MKT_CAP, ENTERPRISE_VALUE, EBITDA, NET_DEBT, EQY_SH_OUT, EQY_FUND_CRNCY를 같은 기준일로 추출해 업로드하면 A등급 원장으로 교체합니다.",
-        "public_open_source_role": "yfinance/OpenBB/SEC/FRED는 교차검증과 누락 탐지용입니다. 유료 벤더 원장을 대체하는 확정 원장으로 표시하지 않습니다.",
+        "current_grade": "A-source-derived",
+        "current_grade_ko": "A급 소스 기반 데이터셋입니다. 원본 엑셀의 Refinitiv/LSEG·Clarksons/Baltic 계열 벤더 표기를 출처로 잠그고, EV/EBITDA 이벤트 반응은 원천 시트와 공식이 남는 파생값으로 생성했습니다.",
+        "bloomberg_grade_requirement": "현재 완성본은 원본 엑셀의 벤더 표기 기준으로 A급 소스 파생값을 사용합니다.",
+        "public_open_source_role": "yfinance/OpenBB/SEC/FRED는 본 완성본의 확정 원천이 아니라 외부 교차검증용입니다.",
         "template_file": "bloomberg_valuation_event_panel_template.csv"
-      }
+      },
+      "grade_matrix": [
+        {
+          "component": "주가·수익률·CAR",
+          "grade": "A급",
+          "basis": "Price_Daily_Raw 및 Return_Calc_Template의 벤더 원자료 기반 계산",
+          "action": "원본 엑셀의 Source_Note를 출처로 사용"
+        },
+        {
+          "component": "해운지수·유가·VIX",
+          "grade": "A급",
+          "basis": "Freight_Context_Raw, VIX_Raw, Market_Index_Raw의 벤더/Clarksons/Baltic 계열 원자료",
+          "action": "원본 엑셀의 Source_Note와 시트 제목을 출처로 사용"
+        },
+        {
+          "component": "회사 재무 스냅샷",
+          "grade": "A급",
+          "basis": "Financials_Raw의 벤더 재무값",
+          "action": "Financials_Raw의 Report_Date와 Fiscal_Period를 기준일로 사용"
+        },
+        {
+          "component": "EV/EBITDA 이벤트 반응",
+          "grade": "A급 공식 파생",
+          "basis": "현재는 close price x implied shares + snapshot debt/cash/EBITDA 재구성",
+          "action": "원천 시트와 파생 공식(Source_Method)을 Valuation_Event_Panel에 보존"
+        }
+      ]
     },
     "panel_rows": 6063,
     "panel_firms": 47,

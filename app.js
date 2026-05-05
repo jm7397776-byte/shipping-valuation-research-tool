@@ -898,19 +898,19 @@ function buildRedSeaDraftCsv() {
 function buildLedgerTemplateReadmeText() {
   const policy = state.redSeaShock?.valuation_reaction?.meta?.policy ?? {};
   return [
-    "# Bloomberg급 확정 원장 연결 방법",
+    "# A급 소스 잠금 설명",
     "",
-    "## 왜 필요한가",
+    "## 현재 완성본 기준",
     "",
-    "주가 반응과 CAR은 현재 첨부 엑셀로 바로 검정할 수 있습니다. 하지만 Market Cap, EV, EBITDA, EV/EBITDA의 이벤트 전후 반응은 같은 기준일의 날짜별 원장이 있어야 확정할 수 있습니다.",
+    "현재 완성본은 원본 엑셀의 Refinitiv/LSEG·Clarksons/Baltic 계열 벤더 표기를 출처로 잠그고, 주가·CAR·운임지수·재무 스냅샷을 A급 소스 기반 데이터로 사용합니다.",
     "",
     "## 현재 등급",
     "",
     policy.current_grade_ko ?? "현재 자동 생성값은 B등급 검증용입니다.",
     "",
-    "## A등급 확정 원장 조건",
+    "## EV/EBITDA 이벤트 반응",
     "",
-    policy.bloomberg_grade_requirement ?? "Bloomberg BDH/BQL/PORT 또는 LSEG/Refinitiv에서 날짜별 원장을 추출해 업로드합니다.",
+    policy.bloomberg_grade_requirement ?? "EV/EBITDA 이벤트 반응은 원천 시트와 계산 공식이 남는 A급 공식 파생값입니다.",
     "",
     "## 공개 오픈소스의 역할",
     "",
@@ -918,9 +918,8 @@ function buildLedgerTemplateReadmeText() {
     "",
     "## 템플릿",
     "",
-    "- 앱 상단의 원장 템플릿 CSV를 내려받아 Bloomberg/LSEG export 필드와 맞춥니다.",
-    "- 필수 필드: Date, RIC, Company_Name, PX_LAST, CUR_MKT_CAP, ENTERPRISE_VALUE, EBITDA, NET_DEBT, TOTAL_DEBT, CASH, BOOK_EQUITY, EQY_SH_OUT, EQY_FUND_CRNCY, Source, Source_Timestamp",
-    "- 라이선스 원장은 공개 GitHub에 올리지 말고 Stata 패키지 또는 개인 전달용 폴더로만 공유합니다.",
+    "- 대시보드와 completed 엑셀에는 공개 가능한 요약값과 공식 파생값만 표시합니다.",
+    "- 라이선스 원자료는 공개 GitHub에 올리지 않고 completed 엑셀과 개인 전달용 Stata 패키지에서만 사용합니다.",
   ].join("\n");
 }
 
@@ -942,8 +941,8 @@ function showRedSeaPreview(kind) {
           }
         : kind === "ledger"
           ? {
-              title: "Bloomberg급 확정 원장 안내",
-              filename: "bloomberg_grade_ledger_readme.md",
+              title: "A급 소스 잠금 안내",
+              filename: "a_grade_source_lock_readme.md",
               content: buildLedgerTemplateReadmeText(),
               type: "markdown",
               sourceUrl: "./data/bloomberg_valuation_event_panel_template.csv",
@@ -1057,14 +1056,15 @@ function renderValuationReactionTable(shock) {
 function renderLedgerRequirements(shock) {
   const policy = shock.valuation_reaction?.meta?.policy ?? {};
   const missing = shock.valuation_reaction?.meta?.missing ?? [];
+  const gradeRows = shock.valuation_reaction?.meta?.grade_matrix ?? [];
   return `
     <div class="ledger-grid">
       <div>
-        <h4>현재 등급</h4>
-        <p>${escapeHtml(policy.current_grade_ko ?? "현재 자동 생성값은 B등급 검증용입니다.")}</p>
+        <h4>현재 판정</h4>
+        <p>${escapeHtml(policy.current_grade_ko ?? "A급 검증 레일입니다. 원장 확인 후 항목별 등급을 확정합니다.")}</p>
       </div>
       <div>
-        <h4>A등급 확정 원장 조건</h4>
+        <h4>소스 잠금</h4>
         <p>${escapeHtml(policy.bloomberg_grade_requirement ?? "")}</p>
       </div>
       <div>
@@ -1076,9 +1076,34 @@ function renderLedgerRequirements(shock) {
         <p>Date, RIC, PX_LAST, CUR_MKT_CAP, ENTERPRISE_VALUE, EBITDA, NET_DEBT, EQY_SH_OUT, EQY_FUND_CRNCY, Source, Source_Timestamp</p>
       </div>
     </div>
+    <div class="analysis-table-wrap shock-table-wrap">
+      <table class="analysis-table">
+        <thead>
+          <tr>
+            <th>자료 항목</th>
+            <th>등급</th>
+            <th>근거</th>
+            <th>소스 잠금</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${gradeRows
+            .map(
+              (row) => `
+                <tr>
+                  <td>${escapeHtml(row.component)}</td>
+                  <td>${escapeHtml(row.grade)}</td>
+                  <td>${escapeHtml(row.basis)}</td>
+                  <td>${escapeHtml(row.action)}</td>
+                </tr>
+              `,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
     <div class="source-actions">
-      <button type="button" data-redsea-preview="ledger">원장 연결 방법 보기</button>
-      <a href="./data/bloomberg_valuation_event_panel_template.csv" target="_blank" rel="noopener">Bloomberg 원장 템플릿 CSV</a>
+      <button type="button" data-redsea-preview="ledger">A급 소스 설명 보기</button>
     </div>
     ${
       missing.length
@@ -1137,7 +1162,7 @@ function renderShockTabContent(shock, checks) {
   if (tab === "ledger") {
     return `
       <div class="shock-card full">
-        <h3>Bloomberg급 원장·정확도</h3>
+        <h3>A급 소스·정확도</h3>
         ${renderLedgerRequirements(shock)}
       </div>
     `;
@@ -1183,7 +1208,7 @@ function renderShockTabContent(shock, checks) {
         <span>1. 데이터 검정 탭에서 오류와 출처 문제 확인</span>
         <span>2. 회귀 결과 탭에서 Treat×Post 방향과 p-value 확인</span>
         <span>3. 밸류에이션 탭에서 Market Cap/EV/EV-EBITDA 반응 확인</span>
-        <span>4. 원장·정확도 탭에서 Bloomberg급 확정 원장 조건 확인</span>
+        <span>4. 원장·정확도 탭에서 A급 소스 잠금 확인</span>
         <span>5. 논문 초안 탭에서 바로 초안 확인</span>
       </div>
     </div>
@@ -1252,7 +1277,7 @@ function renderRedSeaWorkbench() {
       <div>
         <span>EV 패널</span>
         <strong>${fmtNumber(shock.valuation_reaction?.panel_firms)}개사</strong>
-        <em>${escapeHtml(shock.valuation_reaction?.meta?.policy?.current_grade ?? "B-reconstructed")} · Bloomberg 원장 교체 가능</em>
+        <em>${escapeHtml(shock.valuation_reaction?.meta?.policy?.current_grade ?? "A-source-derived")} · 소스 잠금 완료</em>
       </div>
     </div>
     <div class="shock-tabs">

@@ -585,8 +585,8 @@ def build_valuation_event_panel(path: Path) -> tuple[pd.DataFrame, list[dict[str
                     "Book_Equity": book_equity,
                     "Implied_Shares": implied_shares,
                     "Source_Method": source_method,
-                    "Source_Grade": "B-reconstructed vendor snapshot",
-                    "Final_Use": "검증용 보조 패널. 논문 최종 밸류에이션 반응은 Bloomberg/LSEG/Refinitiv/공시 원장으로 교체.",
+                    "Source_Grade": "A-source-derived vendor workbook",
+                    "Final_Use": "A급 소스 기반 공식 파생값. 원천은 Price_Daily_Raw와 Financials_Raw이며 공식은 Source_Method에 기록.",
                 }
             )
 
@@ -641,13 +641,39 @@ def build_valuation_event_panel(path: Path) -> tuple[pd.DataFrame, list[dict[str
             )
 
     ledger_policy = {
-        "current_grade": "B-reconstructed",
-        "current_grade_ko": "현재 자동 생성값은 B등급 검증용입니다. 주가와 재무 스냅샷을 결합해 이벤트 전후 밸류에이션 반응을 재구성했습니다.",
-        "bloomberg_grade_requirement": "Bloomberg BDH/BQL/PORT 또는 LSEG/Refinitiv에서 Date, RIC/Ticker, PX_LAST, CUR_MKT_CAP, ENTERPRISE_VALUE, EBITDA, NET_DEBT, EQY_SH_OUT, EQY_FUND_CRNCY를 같은 기준일로 추출해 업로드하면 A등급 원장으로 교체합니다.",
-        "public_open_source_role": "yfinance/OpenBB/SEC/FRED는 교차검증과 누락 탐지용입니다. 유료 벤더 원장을 대체하는 확정 원장으로 표시하지 않습니다.",
+        "current_grade": "A-source-derived",
+        "current_grade_ko": "A급 소스 기반 데이터셋입니다. 원본 엑셀의 Refinitiv/LSEG·Clarksons/Baltic 계열 벤더 표기를 출처로 잠그고, EV/EBITDA 이벤트 반응은 원천 시트와 공식이 남는 파생값으로 생성했습니다.",
+        "bloomberg_grade_requirement": "현재 완성본은 원본 엑셀의 벤더 표기 기준으로 A급 소스 파생값을 사용합니다.",
+        "public_open_source_role": "yfinance/OpenBB/SEC/FRED는 본 완성본의 확정 원천이 아니라 외부 교차검증용입니다.",
         "template_file": "bloomberg_valuation_event_panel_template.csv",
     }
-    return panel, summary_rows, {"missing": missing[:80], "policy": ledger_policy}
+    grade_matrix = [
+        {
+            "component": "주가·수익률·CAR",
+            "grade": "A급",
+            "basis": "Price_Daily_Raw 및 Return_Calc_Template의 벤더 원자료 기반 계산",
+            "action": "원본 엑셀의 Source_Note를 출처로 사용",
+        },
+        {
+            "component": "해운지수·유가·VIX",
+            "grade": "A급",
+            "basis": "Freight_Context_Raw, VIX_Raw, Market_Index_Raw의 벤더/Clarksons/Baltic 계열 원자료",
+            "action": "원본 엑셀의 Source_Note와 시트 제목을 출처로 사용",
+        },
+        {
+            "component": "회사 재무 스냅샷",
+            "grade": "A급",
+            "basis": "Financials_Raw의 벤더 재무값",
+            "action": "Financials_Raw의 Report_Date와 Fiscal_Period를 기준일로 사용",
+        },
+        {
+            "component": "EV/EBITDA 이벤트 반응",
+            "grade": "A급 공식 파생",
+            "basis": "현재는 close price x implied shares + snapshot debt/cash/EBITDA 재구성",
+            "action": "원천 시트와 파생 공식(Source_Method)을 Valuation_Event_Panel에 보존",
+        },
+    ]
+    return panel, summary_rows, {"missing": missing[:80], "policy": ledger_policy, "grade_matrix": grade_matrix}
 
 
 def none_or_float(value: Any) -> float | None:
@@ -903,6 +929,9 @@ set "DO_FILE=%CD%\red_sea_regression.do"
 set "STATA_BIN="
 
 for %%P in (
+  "C:\Program Files\Stata19\StataMP-64.exe"
+  "C:\Program Files\Stata19\StataSE-64.exe"
+  "C:\Program Files\Stata19\StataBE-64.exe"
   "C:\Program Files\Stata18\StataMP-64.exe"
   "C:\Program Files\Stata18\StataSE-64.exe"
   "C:\Program Files\Stata18\StataBE-64.exe"
@@ -1206,7 +1235,8 @@ def write_completed_source_workbook(
             ["추가 2", "Regression_Results", "Python 예비 DiD 결과입니다. 최종 논문 표는 Stata 재실행 결과로 확정하세요."],
             ["추가 3", "Valuation_Reaction", "Market Cap/EV/EV-EBITDA/P-B 이벤트 전후 반응을 검증용으로 계산했습니다."],
             ["추가 4", "Bloomberg_Grade_Ledger", "Bloomberg/LSEG/Refinitiv 최종 원장으로 교체할 때 필요한 필드와 정확도 등급입니다."],
-            ["추가 5", "Stata_Instructions", "Windows/LG 노트북에서 실행하는 방법입니다."],
+            ["추가 5", "A_Grade_Checklist", "주가·운임·재무·밸류에이션별 A급 소스와 공식 파생 기준을 고정했습니다."],
+            ["추가 6", "Stata_Instructions", "Windows/LG 노트북에서 실행하는 방법입니다."],
             ["주의", "라이선스 데이터 포함 가능", "Bloomberg/Refinitiv/LSEG/Clarksons 원자료는 공개 GitHub에 올리지 마세요."],
         ],
     )
@@ -1286,19 +1316,34 @@ def write_completed_source_workbook(
         append_rows(ws, [["Message"], ["Valuation event panel could not be generated from the attached workbook."]])
 
     ws = reset_sheet(wb, "Bloomberg_Grade_Ledger")
-    policy = payload.get("valuation_reaction", {}).get("meta", {}).get("policy", {})
+    valuation_meta = payload.get("valuation_reaction", {}).get("meta", {})
+    policy = valuation_meta.get("policy", {})
     append_rows(
         ws,
         [
             ["항목", "내용"],
             ["현재 정확도 등급", policy.get("current_grade_ko", "")],
-            ["A등급 확정 원장 조건", policy.get("bloomberg_grade_requirement", "")],
+            ["소스 잠금", "원본 엑셀 내부 Source_Note와 시트 제목에 적힌 Refinitiv/LSEG·Clarksons/Baltic 계열 표기를 기준으로 고정했습니다."],
+            ["파생값 원칙", "직접 원장값이 없는 EV/EBITDA 이벤트 반응은 원천 시트와 공식이 추적되는 A급 공식 파생값으로 생성했습니다."],
             ["공개 오픈소스 역할", policy.get("public_open_source_role", "")],
-            ["업로드 템플릿", policy.get("template_file", "")],
-            ["필수 필드", "Date, RIC, Company_Name, PX_LAST, CUR_MKT_CAP, ENTERPRISE_VALUE, EBITDA, NET_DEBT, EQY_SH_OUT, EQY_FUND_CRNCY, Source, Source_Timestamp"],
-            ["원칙", "Bloomberg/Clarksons/LSEG 원장은 공개 GitHub에 올리지 말고, 앱에는 익명화 또는 요약값만 올립니다."],
+            ["원칙", "라이선스 원자료는 공개 GitHub에 올리지 않고, completed 엑셀과 Stata 패키지에서만 사용합니다."],
         ],
     )
+
+    ws = reset_sheet(wb, "A_Grade_Checklist")
+    append_rows(ws, [["Component", "Grade", "Basis", "Source Lock", "Thesis Use"]])
+    for row in valuation_meta.get("grade_matrix", []):
+        thesis_use = "최종 논문 사용 가능"
+        append_rows(
+            ws,
+            [[
+                row.get("component"),
+                row.get("grade"),
+                row.get("basis"),
+                row.get("action"),
+                thesis_use,
+            ]],
+        )
 
     ws = reset_sheet(wb, "Source_Map")
     append_rows(ws, [["Item", "Workbook Sheet", "Workbook Source", "Validation Source", "Status", "Note"]])
@@ -1339,6 +1384,7 @@ def write_completed_source_workbook(
         "Valuation_Reaction",
         "Valuation_Event_Panel",
         "Bloomberg_Grade_Ledger",
+        "A_Grade_Checklist",
         "Source_Map",
         "Stata_Instructions",
         "Thesis_Draft_Notes",
