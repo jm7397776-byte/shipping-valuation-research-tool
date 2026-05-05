@@ -1,0 +1,1046 @@
+{
+  "summary": {
+    "generated_at": "2026-05-05T22:01:41",
+    "input_workbook": "Red_Sea_DiD_Model_drafting.xlsx",
+    "sheets": [
+      "Event_Setup",
+      "Firm_Master",
+      "Price_Daily_Raw",
+      "Financials_Raw",
+      "Market_Index_Raw",
+      "VIX_Raw",
+      "Freight_Context_Raw",
+      "Return_Calc_Template",
+      "CAR_Calc_Template",
+      "DiD_Panel_Template",
+      "Dashboard",
+      "Event_Study_Path"
+    ],
+    "firm_count": 55,
+    "included_firms": 49,
+    "tanker_firms": 19,
+    "control_firms": 30,
+    "price_observations": 42618,
+    "price_firms": 55,
+    "price_date_min": "2021-10-27",
+    "price_date_max": "2024-12-31",
+    "duplicate_price_keys": 1493,
+    "price_missing_return": 4150,
+    "price_return_scale_note": "Price_Daily_Raw Total_Return appears to be percent units; Return_Calc_Template uses decimals.",
+    "financial_rows": 60,
+    "financial_missing_counts": {
+      "Market_Cap": 6,
+      "Total_Assets": 22,
+      "Total_Debt": 2,
+      "Cash": 1,
+      "Book_Equity": 0,
+      "Revenue": 2,
+      "EBITDA": 0
+    },
+    "market_rows": 1564,
+    "vix_rows": 782,
+    "freight_rows": 774,
+    "did_rows": 5433,
+    "did_firms": 47,
+    "did_event_min": -60,
+    "did_event_max": 60,
+    "did_missing_counts": {
+      "AR": 250,
+      "Treat": 0,
+      "Post": 0,
+      "Treat_Post": 0,
+      "Market_Return": 0,
+      "Oil_Return": 0,
+      "VIX_Close": 0
+    },
+    "car_rows": 50,
+    "source_notes": {
+      "price": [
+        "Refinitiv/LSEG Workspace"
+      ],
+      "financials": [
+        "Refinitiv/LSEG Workspace per sheet title"
+      ],
+      "freight": [
+        "Refinitiv LCOc1 + Clarksons SIN per sheet note"
+      ]
+    }
+  },
+  "checks": [
+    {
+      "severity": "High",
+      "check": "Control group formula row reference",
+      "status": "Fail",
+      "affected": 55,
+      "detail": "Control formulas reference the previous row in many cells, so cached values may not recalculate correctly.",
+      "examples": [
+        {
+          "cell": "Firm_Master!I4",
+          "formula": "=IF(AND(G3>=70,F3<=20),1,0)"
+        },
+        {
+          "cell": "Firm_Master!I5",
+          "formula": "=IF(AND(G4>=70,F4<=20),1,0)"
+        },
+        {
+          "cell": "Firm_Master!I6",
+          "formula": "=IF(AND(G5>=70,F5<=20),1,0)"
+        },
+        {
+          "cell": "Firm_Master!I7",
+          "formula": "=IF(AND(G6>=70,F6<=20),1,0)"
+        },
+        {
+          "cell": "Firm_Master!I8",
+          "formula": "=IF(AND(G7>=70,F7<=20),1,0)"
+        }
+      ],
+      "fix": "Use =IF(AND(G{row}>=70,F{row}<=20),1,0) for each Firm_Master row.",
+      "check_ko": "통제군 공식 행 참조 오류",
+      "detail_ko": "Control 공식이 현재 행이 아니라 바로 위 행의 탱커/벌커 비중을 참조합니다. 엑셀을 다시 계산하면 통제군 판정이 틀어질 수 있습니다.",
+      "fix_ko": "각 행에서 DryBulk_%는 같은 행 G열, Tanker_%는 같은 행 F열을 보도록 수정했습니다."
+    },
+    {
+      "severity": "High",
+      "check": "CAR VLOOKUP index range",
+      "status": "Fail",
+      "affected": 329,
+      "detail": "CAR formulas request columns outside the selected Firm_Master range, which returns blanks under IFERROR.",
+      "examples": [
+        {
+          "cell": "CAR_Calc_Template!I4",
+          "formula": "=IFERROR(VLOOKUP(A4,Firm_Master!$C:$N,18,0),\"\")",
+          "range_width": 12,
+          "requested_index": 18
+        },
+        {
+          "cell": "CAR_Calc_Template!J4",
+          "formula": "=IFERROR(VLOOKUP(A4,Firm_Master!$C:$O,19,0),\"\")",
+          "range_width": 13,
+          "requested_index": 19
+        },
+        {
+          "cell": "CAR_Calc_Template!K4",
+          "formula": "=IFERROR(VLOOKUP(A4,Firm_Master!$C:$P,20,0),\"\")",
+          "range_width": 14,
+          "requested_index": 20
+        },
+        {
+          "cell": "CAR_Calc_Template!L4",
+          "formula": "=IFERROR(VLOOKUP(A4,Firm_Master!$C:$Q,21,0),\"\")",
+          "range_width": 15,
+          "requested_index": 21
+        },
+        {
+          "cell": "CAR_Calc_Template!M4",
+          "formula": "=IFERROR(VLOOKUP(A4,Firm_Master!$C:$K,15,0),\"\")",
+          "range_width": 9,
+          "requested_index": 15
+        }
+      ],
+      "fix": "Replace with XLOOKUP by RIC to the exact Alpha/Beta/R2/N_Est/Size/Leverage columns or widen the lookup range.",
+      "check_ko": "CAR 시트 조회 범위 오류",
+      "detail_ko": "CAR_Calc_Template의 VLOOKUP이 선택한 범위보다 더 먼 열 번호를 요청해 IFERROR 때문에 빈칸이 됩니다.",
+      "fix_ko": "RIC 기준 INDEX/MATCH 공식으로 Alpha, Beta, R2, N, Size, Leverage, Cash 값을 가져오게 수정했습니다."
+    },
+    {
+      "severity": "Medium",
+      "check": "Excel compatibility",
+      "status": "Review",
+      "affected": "Firm_Master formulas",
+      "detail": "_xlfn.XLOOKUP appears in formulas. Excel versions without XLOOKUP support may show #NAME? even when cached values display.",
+      "examples": [],
+      "fix": "Use INDEX/MATCH for maximum compatibility or require Excel 365.",
+      "check_ko": "엑셀 버전 호환성",
+      "detail_ko": "일부 공식에 XLOOKUP 흔적이 있어 구버전 Excel에서는 #NAME? 오류가 날 수 있습니다.",
+      "fix_ko": "완성본에서는 핵심 조회 공식을 INDEX/MATCH 중심으로 바꿨습니다."
+    },
+    {
+      "severity": "Medium",
+      "check": "Source label consistency",
+      "status": "Review",
+      "affected": "Workbook-level source notes",
+      "detail": "The attached workbook labels price/financial/index sheets as Refinitiv/LSEG Workspace. The user mentioned Bloomberg, so the source trail should be reconciled.",
+      "examples": [
+        "Refinitiv/LSEG Workspace"
+      ],
+      "fix": "Add a Bloomberg extraction log sheet if Bloomberg was the real source, or retain Refinitiv/LSEG as the cited source.",
+      "check_ko": "원자료 출처 표기 불일치",
+      "detail_ko": "사용자는 Bloomberg 추출을 말했지만 엑셀 내부에는 Refinitiv/LSEG Workspace 표기가 있습니다.",
+      "fix_ko": "최종 논문 전 Bloomberg 추출 로그를 붙이거나, Refinitiv/LSEG 출처로 통일해야 합니다."
+    },
+    {
+      "severity": "Medium",
+      "check": "Regression panel firm coverage",
+      "status": "Review",
+      "affected": "47 panel firms vs 49 included firms",
+      "detail": "Some included firms do not appear in the DiD panel, likely due to missing/illiquid return histories.",
+      "examples": [],
+      "fix": "Keep a firm exclusion log with reason: no price data, insufficient estimation window, suspended/illiquid, or ticker mismatch.",
+      "check_ko": "회귀 패널 회사 커버리지 차이",
+      "detail_ko": "포함 회사 수보다 DiD 패널에 실제 들어간 회사 수가 적습니다. 가격 데이터 부족, 거래정지, 티커 불일치 가능성이 있습니다.",
+      "fix_ko": "제외 회사와 제외 사유를 부록 표로 남기세요."
+    }
+  ],
+  "regressions": [
+    {
+      "name": "Base DiD: AR ~ Treat + Post + Treat×Post",
+      "outcome": "AR",
+      "n": 5183,
+      "r2": 0.0006149984363523764,
+      "coefficients": [
+        {
+          "term": "Intercept",
+          "coef": 0.0006535894736922026,
+          "se_hc1": 0.0007466292597152238,
+          "t": 0.8753869007778935,
+          "p_approx": 0.3813634247591966
+        },
+        {
+          "term": "Treat",
+          "coef": 0.0016046778858015225,
+          "se_hc1": 0.0012308903196687902,
+          "t": 1.3036725207436124,
+          "p_approx": 0.1923452625099742
+        },
+        {
+          "term": "Post",
+          "coef": 0.00201064951588733,
+          "se_hc1": 0.0010979789284860098,
+          "t": 1.8312277801722399,
+          "p_approx": 0.06706655191378585
+        },
+        {
+          "term": "Treat_Post",
+          "coef": -0.0026156192215053635,
+          "se_hc1": 0.001967041765403765,
+          "t": -1.3297222598466119,
+          "p_approx": 0.18360979787067944
+        }
+      ],
+      "note": "OLS with HC1 heteroskedasticity-robust standard errors; p-values use normal approximation."
+    },
+    {
+      "name": "Controlled DiD: + size/leverage/market/oil/VIX",
+      "outcome": "AR",
+      "n": 4951,
+      "r2": 0.009408371348187616,
+      "coefficients": [
+        {
+          "term": "Intercept",
+          "coef": 0.025266809938641534,
+          "se_hc1": 0.005165957498247849,
+          "t": 4.89102164452792,
+          "p_approx": 1.0031393153919765e-06
+        },
+        {
+          "term": "Treat",
+          "coef": 0.000622720638697123,
+          "se_hc1": 0.0010980407169628123,
+          "t": 0.5671198062851187,
+          "p_approx": 0.570632787227572
+        },
+        {
+          "term": "Post",
+          "coef": -0.001432962429686202,
+          "se_hc1": 0.0012408107970903813,
+          "t": -1.1548597361067485,
+          "p_approx": 0.2481478700181201
+        },
+        {
+          "term": "Treat_Post",
+          "coef": -0.0018671082812446416,
+          "se_hc1": 0.0017178037772312452,
+          "t": -1.0869159248526308,
+          "p_approx": 0.2770739677595362
+        },
+        {
+          "term": "Size_ln_MCap",
+          "coef": -0.0001961067478449925,
+          "se_hc1": 0.0001610087970415762,
+          "t": -1.2179877835765285,
+          "p_approx": 0.22322861516289594
+        },
+        {
+          "term": "Leverage",
+          "coef": -0.006143436605633605,
+          "se_hc1": 0.0026461380316926955,
+          "t": -2.3216614296207894,
+          "p_approx": 0.020251173345034124
+        },
+        {
+          "term": "Market_Return",
+          "coef": -0.23900057791341367,
+          "se_hc1": 0.06450595118530165,
+          "t": -3.705093460708047,
+          "p_approx": 0.00021131280203823266
+        },
+        {
+          "term": "Oil_Return",
+          "coef": 0.041470589896659305,
+          "se_hc1": 0.023825433292621618,
+          "t": 1.7406017085742624,
+          "p_approx": 0.08175341795685886
+        },
+        {
+          "term": "VIX_Close",
+          "coef": -0.0011109188715383127,
+          "se_hc1": 0.00023768813878046957,
+          "t": -4.673850690397156,
+          "p_approx": 2.9560427179387005e-06
+        }
+      ],
+      "note": "OLS with HC1 heteroskedasticity-robust standard errors; p-values use normal approximation."
+    },
+    {
+      "name": "Freight sensitivity: + BDTI/BCTI/BDI returns",
+      "outcome": "AR",
+      "n": 4967,
+      "r2": 0.012659945451177546,
+      "coefficients": [
+        {
+          "term": "Intercept",
+          "coef": -0.0003700336753195674,
+          "se_hc1": 0.0008019365163321886,
+          "t": -0.4614251474817331,
+          "p_approx": 0.644493612888899
+        },
+        {
+          "term": "Treat",
+          "coef": 0.0014305756454622291,
+          "se_hc1": 0.001252514098392262,
+          "t": 1.14216330762147,
+          "p_approx": 0.25338614459455044
+        },
+        {
+          "term": "Post",
+          "coef": 0.003854549351819567,
+          "se_hc1": 0.0011723691425096275,
+          "t": 3.2878290736724276,
+          "p_approx": 0.0010096311745717568
+        },
+        {
+          "term": "Treat_Post",
+          "coef": -0.0028667410720437667,
+          "se_hc1": 0.002034557733266834,
+          "t": -1.409024194875374,
+          "p_approx": 0.158828013988507
+        },
+        {
+          "term": "BDTI_Return",
+          "coef": 0.03764298310687434,
+          "se_hc1": 0.024643239411099555,
+          "t": 1.5275176481026913,
+          "p_approx": 0.12663234219618236
+        },
+        {
+          "term": "BCTI_Return",
+          "coef": -0.022515917744089054,
+          "se_hc1": 0.01495858394956754,
+          "t": -1.5052171930177922,
+          "p_approx": 0.13226824630282996
+        },
+        {
+          "term": "BDI_Return",
+          "coef": 0.08213612329949999,
+          "se_hc1": 0.011866910025948526,
+          "t": 6.921441480545381,
+          "p_approx": 4.47064607556058e-12
+        }
+      ],
+      "note": "OLS with HC1 heteroskedasticity-robust standard errors; p-values use normal approximation."
+    },
+    {
+      "name": "Raw return DiD: stock return outcome",
+      "outcome": "Return",
+      "n": 5183,
+      "r2": 0.008173126716353951,
+      "coefficients": [
+        {
+          "term": "Intercept",
+          "coef": 0.01844925574854872,
+          "se_hc1": 0.003912677191807337,
+          "t": 4.715251180746314,
+          "p_approx": 2.4141274668210144e-06
+        },
+        {
+          "term": "Treat",
+          "coef": -0.0003718653286139777,
+          "se_hc1": 0.0011741499605940104,
+          "t": -0.3167102509000201,
+          "p_approx": 0.7514634698292291
+        },
+        {
+          "term": "Post",
+          "coef": -0.0011851386931459457,
+          "se_hc1": 0.001244129360862227,
+          "t": -0.9525847797085998,
+          "p_approx": 0.3408004918906953
+        },
+        {
+          "term": "Treat_Post",
+          "coef": -0.00302011811233796,
+          "se_hc1": 0.001922295930479153,
+          "t": -1.5710994672839802,
+          "p_approx": 0.11615954633791126
+        },
+        {
+          "term": "Market_Return",
+          "coef": 0.14169200705330662,
+          "se_hc1": 0.0714261599913836,
+          "t": 1.9837550705567741,
+          "p_approx": 0.04728315104761349
+        },
+        {
+          "term": "Oil_Return",
+          "coef": 0.04707226609418692,
+          "se_hc1": 0.0242225346280391,
+          "t": 1.9433253710657439,
+          "p_approx": 0.051976857931068654
+        },
+        {
+          "term": "VIX_Close",
+          "coef": -0.001076530710639391,
+          "se_hc1": 0.00024125460954927742,
+          "t": -4.462218204454678,
+          "p_approx": 8.111556301537703e-06
+        }
+      ],
+      "note": "OLS with HC1 heteroskedasticity-robust standard errors; p-values use normal approximation."
+    }
+  ],
+  "event_path": [
+    {
+      "event_day": -20,
+      "ar_treat": -0.00973882553107435,
+      "ar_control": -0.0124319027430477,
+      "ar_diff": 0.002693077211973349,
+      "car_treat": -0.009738825531074302,
+      "car_control": -0.012431902743047729,
+      "car_diff": 0.002693077211973427,
+      "n_treat": 15,
+      "n_control": 24
+    },
+    {
+      "event_day": -19,
+      "ar_treat": 0.0186452678853233,
+      "ar_control": 0.00403284628274017,
+      "ar_diff": 0.01461242160258313,
+      "car_treat": 0.01864526788532328,
+      "car_control": 0.0040328462827401435,
+      "car_diff": 0.014612421602583137,
+      "n_treat": 16,
+      "n_control": 26
+    },
+    {
+      "event_day": -18,
+      "ar_treat": -0.000613484451389656,
+      "ar_control": 0.00302096146244312,
+      "ar_diff": -0.003634445913832776,
+      "car_treat": -0.0006134844513896454,
+      "car_control": 0.003020961462443017,
+      "car_diff": -0.0036344459138326624,
+      "n_treat": 17,
+      "n_control": 28
+    },
+    {
+      "event_day": -17,
+      "ar_treat": -0.00882931751547551,
+      "ar_control": -0.0114119294260138,
+      "ar_diff": 0.002582611910538291,
+      "car_treat": -0.008829317515475554,
+      "car_control": -0.011411929426013767,
+      "car_diff": 0.002582611910538213,
+      "n_treat": 17,
+      "n_control": 29
+    },
+    {
+      "event_day": -16,
+      "ar_treat": 0.0157193350207656,
+      "ar_control": -0.00172731210244111,
+      "ar_diff": 0.017446647123206708,
+      "car_treat": 0.015719335020765612,
+      "car_control": -0.0017273121024411475,
+      "car_diff": 0.01744664712320676,
+      "n_treat": 18,
+      "n_control": 27
+    },
+    {
+      "event_day": -15,
+      "ar_treat": 0.00531257522838424,
+      "ar_control": -0.0124106199934571,
+      "ar_diff": 0.01772319522184134,
+      "car_treat": 0.005312575228384242,
+      "car_control": -0.01241061999345705,
+      "car_diff": 0.017723195221841292,
+      "n_treat": 18,
+      "n_control": 28
+    },
+    {
+      "event_day": -14,
+      "ar_treat": -0.000342127451738295,
+      "ar_control": -0.015786201702671,
+      "ar_diff": 0.015444074250932706,
+      "car_treat": -0.0003421274517383388,
+      "car_control": -0.015786201702670977,
+      "car_diff": 0.015444074250932638,
+      "n_treat": 19,
+      "n_control": 28
+    },
+    {
+      "event_day": -13,
+      "ar_treat": -0.00695187406775791,
+      "ar_control": -0.00558870706786908,
+      "ar_diff": -0.0013631669998888296,
+      "car_treat": -0.006951874067757879,
+      "car_control": -0.00558870706786907,
+      "car_diff": -0.0013631669998888096,
+      "n_treat": 17,
+      "n_control": 27
+    },
+    {
+      "event_day": -12,
+      "ar_treat": 2.18371025408707e-05,
+      "ar_control": 0.00506381391352729,
+      "ar_diff": -0.005041976810986419,
+      "car_treat": 2.183710254088922e-05,
+      "car_control": 0.005063813913527282,
+      "car_diff": -0.005041976810986393,
+      "n_treat": 21,
+      "n_control": 28
+    },
+    {
+      "event_day": -11,
+      "ar_treat": 0.00857992807378438,
+      "ar_control": 0.00656412859696934,
+      "ar_diff": 0.00201579947681504,
+      "car_treat": 0.008579928073784382,
+      "car_control": 0.00656412859696931,
+      "car_diff": 0.002015799476815072,
+      "n_treat": 16,
+      "n_control": 28
+    },
+    {
+      "event_day": -10,
+      "ar_treat": 0.00300338929644648,
+      "ar_control": 0.00272035895898279,
+      "ar_diff": 0.0002830303374636903,
+      "car_treat": 0.0030033892964465014,
+      "car_control": 0.002720358958982816,
+      "car_diff": 0.00028303033746368556,
+      "n_treat": 17,
+      "n_control": 30
+    },
+    {
+      "event_day": -9,
+      "ar_treat": -0.00025645383968369,
+      "ar_control": -0.0213463341002389,
+      "ar_diff": 0.021089880260555208,
+      "car_treat": -0.00025645383968364577,
+      "car_control": -0.021346334100238895,
+      "car_diff": 0.02108988026055525,
+      "n_treat": 17,
+      "n_control": 27
+    },
+    {
+      "event_day": -8,
+      "ar_treat": -0.00199018405089907,
+      "ar_control": -0.00377686192371426,
+      "ar_diff": 0.0017866778728151899,
+      "car_treat": -0.001990184050899124,
+      "car_control": -0.003776861923714292,
+      "car_diff": 0.0017866778728151678,
+      "n_treat": 18,
+      "n_control": 27
+    },
+    {
+      "event_day": -7,
+      "ar_treat": -0.00535300165555361,
+      "ar_control": 0.00771247773292726,
+      "ar_diff": -0.01306547938848087,
+      "car_treat": -0.005353001655553635,
+      "car_control": 0.007712477732927159,
+      "car_diff": -0.013065479388480794,
+      "n_treat": 17,
+      "n_control": 28
+    },
+    {
+      "event_day": -6,
+      "ar_treat": 0.00343057857361825,
+      "ar_control": -0.0149896314440744,
+      "ar_diff": 0.01842021001769265,
+      "car_treat": 0.0034305785736181704,
+      "car_control": -0.014989631444074392,
+      "car_diff": 0.018420210017692562,
+      "n_treat": 18,
+      "n_control": 35
+    },
+    {
+      "event_day": -5,
+      "ar_treat": 0.0216786480621778,
+      "ar_control": -0.00710477540609827,
+      "ar_diff": 0.02878342346827607,
+      "car_treat": 0.021678648062177786,
+      "car_control": -0.007104775406098218,
+      "car_diff": 0.028783423468276004,
+      "n_treat": 19,
+      "n_control": 26
+    },
+    {
+      "event_day": -4,
+      "ar_treat": 0.00267743784105919,
+      "ar_control": -0.00526285087427839,
+      "ar_diff": 0.00794028871533758,
+      "car_treat": 0.002677437841059227,
+      "car_control": -0.0052628508742783575,
+      "car_diff": 0.007940288715337585,
+      "n_treat": 16,
+      "n_control": 26
+    },
+    {
+      "event_day": -3,
+      "ar_treat": 0.0044652255532322,
+      "ar_control": 0.0171291219943047,
+      "ar_diff": -0.012663896441072502,
+      "car_treat": 0.004465225553232255,
+      "car_control": 0.017129121994304608,
+      "car_diff": -0.012663896441072353,
+      "n_treat": 18,
+      "n_control": 27
+    },
+    {
+      "event_day": -2,
+      "ar_treat": 0.00587902814880633,
+      "ar_control": 0.00755599728320662,
+      "ar_diff": -0.0016769691344002899,
+      "car_treat": 0.0058790281488063645,
+      "car_control": 0.007555997283206661,
+      "car_diff": -0.0016769691344002968,
+      "n_treat": 19,
+      "n_control": 27
+    },
+    {
+      "event_day": -1,
+      "ar_treat": 0.0165227542678797,
+      "ar_control": 0.0123842733678186,
+      "ar_diff": 0.004138480900061102,
+      "car_treat": 0.016522754267879636,
+      "car_control": 0.012384273367818555,
+      "car_diff": 0.004138480900061081,
+      "n_treat": 18,
+      "n_control": 27
+    },
+    {
+      "event_day": 0,
+      "ar_treat": 0.0154215545079816,
+      "ar_control": 0.00734083999004605,
+      "ar_diff": 0.00808071451793555,
+      "car_treat": 0.01542155450798166,
+      "car_control": 0.0073408399900460886,
+      "car_diff": 0.008080714517935572,
+      "n_treat": 17,
+      "n_control": 27
+    },
+    {
+      "event_day": 1,
+      "ar_treat": 0.00396714126011789,
+      "ar_control": 0.0049691645034822,
+      "ar_diff": -0.00100202324336431,
+      "car_treat": 0.003967141260117879,
+      "car_control": 0.004969164503482171,
+      "car_diff": -0.0010020232433642917,
+      "n_treat": 20,
+      "n_control": 27
+    },
+    {
+      "event_day": 3,
+      "ar_treat": -0.00277641495220006,
+      "ar_control": 0.0042367797920522,
+      "ar_diff": -0.007013194744252261,
+      "car_treat": -0.002776414952200046,
+      "car_control": 0.00423677979205217,
+      "car_diff": -0.007013194744252216,
+      "n_treat": 17,
+      "n_control": 29
+    },
+    {
+      "event_day": 4,
+      "ar_treat": -0.00365667922874293,
+      "ar_control": 0.0253685482154732,
+      "ar_diff": -0.02902522744421613,
+      "car_treat": -0.0036566792287429095,
+      "car_control": 0.025368548215473297,
+      "car_diff": -0.029025227444216206,
+      "n_treat": 19,
+      "n_control": 29
+    },
+    {
+      "event_day": 5,
+      "ar_treat": -0.00130015183559149,
+      "ar_control": 0.00993863081998698,
+      "ar_diff": -0.01123878265557847,
+      "car_treat": -0.001300151835591512,
+      "car_control": 0.009938630819986916,
+      "car_diff": -0.011238782655578428,
+      "n_treat": 16,
+      "n_control": 26
+    },
+    {
+      "event_day": 6,
+      "ar_treat": 0.00649792665836988,
+      "ar_control": 0.00240774843673801,
+      "ar_diff": 0.00409017822163187,
+      "car_treat": 0.00649792665836979,
+      "car_control": 0.0024077484367379665,
+      "car_diff": 0.004090178221631824,
+      "n_treat": 19,
+      "n_control": 28
+    },
+    {
+      "event_day": 7,
+      "ar_treat": 0.0159387252809741,
+      "ar_control": 0.0122491234649482,
+      "ar_diff": 0.0036896018160258986,
+      "car_treat": 0.015938725280974175,
+      "car_control": 0.01224912346494822,
+      "car_diff": 0.003689601816025956,
+      "n_treat": 17,
+      "n_control": 28
+    },
+    {
+      "event_day": 8,
+      "ar_treat": -0.0137251162442726,
+      "ar_control": 0.0242674411297098,
+      "ar_diff": -0.0379925573739824,
+      "car_treat": -0.01372511624427264,
+      "car_control": 0.024267441129709688,
+      "car_diff": -0.03799255737398233,
+      "n_treat": 19,
+      "n_control": 28
+    },
+    {
+      "event_day": 9,
+      "ar_treat": 0.00427800254593741,
+      "ar_control": 0.0351685583127691,
+      "ar_diff": -0.03089055576683169,
+      "car_treat": 0.004278002545937465,
+      "car_control": 0.035168558312768994,
+      "car_diff": -0.03089055576683153,
+      "n_treat": 17,
+      "n_control": 28
+    },
+    {
+      "event_day": 10,
+      "ar_treat": 0.00928347768893484,
+      "ar_control": 0.0365799789517873,
+      "ar_diff": -0.027296501262852463,
+      "car_treat": 0.009283477688934783,
+      "car_control": 0.03657997895178733,
+      "car_diff": -0.027296501262852546,
+      "n_treat": 18,
+      "n_control": 28
+    },
+    {
+      "event_day": 11,
+      "ar_treat": -0.00277322975110218,
+      "ar_control": -0.0230962081242582,
+      "ar_diff": 0.020322978373156022,
+      "car_treat": -0.0027732297511021686,
+      "car_control": -0.023096208124258166,
+      "car_diff": 0.020322978373155998,
+      "n_treat": 16,
+      "n_control": 27
+    },
+    {
+      "event_day": 12,
+      "ar_treat": -0.0106005653777129,
+      "ar_control": -0.0107259582860205,
+      "ar_diff": 0.00012539290830759948,
+      "car_treat": -0.010600565377712923,
+      "car_control": -0.01072595828602052,
+      "car_diff": 0.00012539290830759775,
+      "n_treat": 18,
+      "n_control": 28
+    },
+    {
+      "event_day": 13,
+      "ar_treat": -0.000500031796122936,
+      "ar_control": -0.0190241834967266,
+      "ar_diff": 0.018524151700603664,
+      "car_treat": -0.0005000317961229017,
+      "car_control": -0.019024183496726632,
+      "car_diff": 0.01852415170060373,
+      "n_treat": 21,
+      "n_control": 30
+    },
+    {
+      "event_day": 14,
+      "ar_treat": 7.10507437354554e-05,
+      "ar_control": 0.000110914972463754,
+      "ar_diff": -3.98642287282986e-05,
+      "car_treat": 7.105074373536802e-05,
+      "car_control": 0.00011091497246384918,
+      "car_diff": -3.9864228728481166e-05,
+      "n_treat": 17,
+      "n_control": 27
+    },
+    {
+      "event_day": 15,
+      "ar_treat": -0.00766060572848048,
+      "ar_control": -0.00802372525710728,
+      "ar_diff": 0.0003631195286268006,
+      "car_treat": -0.007660605728480485,
+      "car_control": -0.008023725257107261,
+      "car_diff": 0.0003631195286267763,
+      "n_treat": 16,
+      "n_control": 26
+    },
+    {
+      "event_day": 16,
+      "ar_treat": 0.00448041662733184,
+      "ar_control": 0.0151703972970726,
+      "ar_diff": -0.01068998066974076,
+      "car_treat": 0.004480416627331785,
+      "car_control": 0.015170397297072702,
+      "car_diff": -0.010689980669740917,
+      "n_treat": 17,
+      "n_control": 30
+    },
+    {
+      "event_day": 17,
+      "ar_treat": 0.011532917278651,
+      "ar_control": -0.00974814343425188,
+      "ar_diff": 0.02128106071290288,
+      "car_treat": 0.011532917278650912,
+      "car_control": -0.009748143434251899,
+      "car_diff": 0.02128106071290281,
+      "n_treat": 19,
+      "n_control": 27
+    },
+    {
+      "event_day": 18,
+      "ar_treat": 0.00832372597269266,
+      "ar_control": -0.00476523718509471,
+      "ar_diff": 0.013088963157787369,
+      "car_treat": 0.008323725972692708,
+      "car_control": -0.004765237185094695,
+      "car_diff": 0.013088963157787403,
+      "n_treat": 18,
+      "n_control": 27
+    },
+    {
+      "event_day": 19,
+      "ar_treat": -0.0294454566700559,
+      "ar_control": 0.0122096059334091,
+      "ar_diff": -0.041655062603465,
+      "car_treat": -0.029445456670055936,
+      "car_control": 0.01220960593340914,
+      "car_diff": -0.041655062603465076,
+      "n_treat": 26,
+      "n_control": 28
+    },
+    {
+      "event_day": 20,
+      "ar_treat": 0.0169912290231301,
+      "ar_control": 0.0193022642776274,
+      "ar_diff": -0.002311035254497301,
+      "car_treat": 0.016991229023129995,
+      "car_control": 0.01930226427762749,
+      "car_diff": -0.0023110352544974955,
+      "n_treat": 17,
+      "n_control": 28
+    }
+  ],
+  "car_summary": [
+    {
+      "metric": "CAR [-1,+5]",
+      "tanker_avg": 0.02767401683080796,
+      "control_avg": 0.0652768567467177,
+      "difference": -0.037602839915909736,
+      "n_tanker": 18,
+      "n_control": 29
+    },
+    {
+      "metric": "CAR [-1,+10]",
+      "tanker_avg": 0.04828266806463069,
+      "control_avg": 0.17537324359000292,
+      "difference": -0.12709057552537223,
+      "n_tanker": 18,
+      "n_control": 29
+    },
+    {
+      "metric": "CAR [-1,+20]",
+      "tanker_avg": 0.025600397405342992,
+      "control_avg": 0.15580797463378263,
+      "difference": -0.13020757722843962,
+      "n_tanker": 18,
+      "n_control": 29
+    }
+  ],
+  "source_map": [
+    {
+      "item": "Company stock returns, close prices, market cap",
+      "workbook_sheet": "Price_Daily_Raw",
+      "workbook_source": "Refinitiv/LSEG Workspace in workbook Source_Note",
+      "validation_source": "Cross-check with Bloomberg BDP/BDH, LSEG Workspace, or exchange close data",
+      "status": "vendor",
+      "note": "Workbook labels this source as Refinitiv/LSEG, not Bloomberg. If original pull was Bloomberg, keep the Bloomberg field/ticker log as an additional evidence sheet."
+    },
+    {
+      "item": "Market index return",
+      "workbook_sheet": "Market_Index_Raw",
+      "workbook_source": "Refinitiv/LSEG Workspace; S&P 500 in shown extract",
+      "validation_source": "MSCI World/S&P index vendor export. Use one market benchmark consistently across the market model.",
+      "status": "vendor",
+      "note": "Return_Calc_Template states MSCI World, while Market_Index_Raw sample header shows S&P 500. This benchmark naming should be reconciled before final thesis use."
+    },
+    {
+      "item": "VIX",
+      "workbook_sheet": "VIX_Raw",
+      "workbook_source": "Refinitiv/LSEG Workspace",
+      "validation_source": "Cboe VIX or FRED VIXCLS series",
+      "status": "public cross-check available",
+      "note": "FRED can be used for a reproducible VIX cross-check; daily timing and holidays still need alignment."
+    },
+    {
+      "item": "Brent crude",
+      "workbook_sheet": "Freight_Context_Raw",
+      "workbook_source": "Refinitiv LCOc1",
+      "validation_source": "ICE Brent continuous futures via licensed vendor; FRED DCOILBRENTEU for spot cross-check",
+      "status": "public cross-check available",
+      "note": "Use futures or spot consistently; do not mix if interpreting as tradable market reaction."
+    },
+    {
+      "item": "BDI / BDTI / BCTI freight indices",
+      "workbook_sheet": "Freight_Context_Raw",
+      "workbook_source": "Clarksons SIN / Baltic Exchange index series in workbook note",
+      "validation_source": "Baltic Exchange licensed data, Clarksons SIN, Bloomberg, LSEG",
+      "status": "licensed preferred",
+      "note": "Official Baltic time series are licensed benchmark data. Public webpages can validate definitions, not the full historical daily panel."
+    },
+    {
+      "item": "Company financials",
+      "workbook_sheet": "Financials_Raw",
+      "workbook_source": "Refinitiv/LSEG Workspace in workbook Source_Note/title",
+      "validation_source": "Annual report, 20-F/10-K, exchange filing, SEC EDGAR for SEC filers",
+      "status": "filing final",
+      "note": "For thesis-final valuation multiples, replace vendor snapshot values with filing/audited values or document the vendor snapshot date."
+    }
+  ],
+  "stata_package": {
+    "directory": "red_sea_stata_package",
+    "files": [
+      "red_sea_did_panel.csv",
+      "red_sea_car_firm_level.csv",
+      "red_sea_event_path.csv",
+      "shipping_shock_valuation_event_panel.csv",
+      "shipping_shock_valuation_reaction_summary.csv",
+      "red_sea_regression.do",
+      "run_red_sea_stata_windows.bat",
+      "README_KR_HOW_TO_USE.md",
+      "red_sea_thesis_draft.md"
+    ],
+    "windows_run_command": "run_red_sea_stata_windows.bat",
+    "note": "Windows/LG 노트북 기준: red_sea_stata_package 폴더를 받은 뒤 run_red_sea_stata_windows.bat를 더블클릭하세요. 자동 실행이 안 되면 Stata에서 red_sea_regression.do를 직접 열어 실행합니다."
+  },
+  "valuation_reaction": {
+    "summary": [
+      {
+        "group": "Tanker",
+        "n": 18,
+        "market_cap_change_pct": 0.04009392456640004,
+        "enterprise_value_change_pct": 0.02129352489802394,
+        "ev_ebitda_change": 0.08661143132142435,
+        "pb_change": 0.023159766482318045
+      },
+      {
+        "group": "Control",
+        "n": 29,
+        "market_cap_change_pct": 0.1328070175438596,
+        "enterprise_value_change_pct": 0.07661665943885354,
+        "ev_ebitda_change": 0.2503789910819909,
+        "pb_change": 0.07515114093799047
+      },
+      {
+        "group": "Tanker minus control",
+        "n": 18,
+        "market_cap_change_pct": -0.09271309297745955,
+        "enterprise_value_change_pct": -0.0553231345408296,
+        "ev_ebitda_change": -0.16376755976056656,
+        "pb_change": -0.05199137445567242
+      }
+    ],
+    "meta": {
+      "missing": [
+        {
+          "RIC": "BLTA.JK",
+          "reason": "Cannot infer shares from report-date market cap and close price"
+        },
+        {
+          "RIC": "BULK.NFF",
+          "reason": "Cannot infer shares from report-date market cap and close price"
+        },
+        {
+          "RIC": "JDPL.ZA",
+          "reason": "Cannot infer shares from report-date market cap and close price"
+        },
+        {
+          "RIC": "VPA.HNO",
+          "reason": "Cannot infer shares from report-date market cap and close price"
+        }
+      ],
+      "policy": {
+        "current_grade": "B-reconstructed",
+        "current_grade_ko": "현재 자동 생성값은 B등급 검증용입니다. 주가와 재무 스냅샷을 결합해 이벤트 전후 밸류에이션 반응을 재구성했습니다.",
+        "bloomberg_grade_requirement": "Bloomberg BDH/BQL/PORT 또는 LSEG/Refinitiv에서 Date, RIC/Ticker, PX_LAST, CUR_MKT_CAP, ENTERPRISE_VALUE, EBITDA, NET_DEBT, EQY_SH_OUT, EQY_FUND_CRNCY를 같은 기준일로 추출해 업로드하면 A등급 원장으로 교체합니다.",
+        "public_open_source_role": "yfinance/OpenBB/SEC/FRED는 교차검증과 누락 탐지용입니다. 유료 벤더 원장을 대체하는 확정 원장으로 표시하지 않습니다.",
+        "template_file": "bloomberg_valuation_event_panel_template.csv"
+      }
+    },
+    "panel_rows": 6063,
+    "panel_firms": 47,
+    "event_window": "[-20,+20] valuation reaction summary; full CSV covers regression event-window dates available in the workbook."
+  },
+  "originality": {
+    "research_gap": "기존 해운 event study는 운임지수 또는 해운주 전반의 반응을 보는 경우가 많다. 본 연구는 특정 해운 shock을 사례로 삼되, 상장 탱커 주력 선사와 벌커 주력 선사를 분리하고, 선대 노출도·해운지수·경제지수·기업가치평가/초과수익률 반응을 연결한다.",
+    "non_overlap_rule": "문헌의 문장을 복제하지 않고, 본 데이터셋의 표본 정의·검정 로그·Stata 회귀 결과·선대 노출도 기준을 중심으로 독자적 서술을 작성한다.",
+    "thesis_angle": "해운 shock은 상장 탱커 주력 선사와 벌커 주력 선사의 주가·초과수익률·기업가치평가 민감도에 서로 다른 영향을 주는가? 현재 실증 사례는 홍해 공급망 shock으로 설정한다.",
+    "plagiarism_guard": [
+      "문헌은 주장 근거와 방법론 위치를 인용하는 용도로만 사용한다.",
+      "초록·서론·결론은 앱의 실제 표본 수, 이벤트 날짜, 회귀 계수, 데이터 한계를 반영해 매번 새로 생성한다.",
+      "출처 없는 수치와 타 논문 문장 구조를 그대로 쓰지 않는다."
+    ]
+  },
+  "interpretation": [
+    "Base DiD에서 Treat×Post 계수는 -0.26%p/일이며, 예비 표본에서는 약한 해운 shock(현재 사례: 홍해) 이후 탱커 주력 선사의 초과수익률 차이를 시사한다.",
+    "CAR [-1,+5] 평균 차이는 -3.76%p이다 (탱커 n=18, 벌커/통제 n=29).",
+    "CAR [-1,+10] 평균 차이는 -12.71%p이다 (탱커 n=18, 벌커/통제 n=29).",
+    "CAR [-1,+20] 평균 차이는 -13.02%p이다 (탱커 n=18, 벌커/통제 n=29).",
+    "공식 오류 검정상 Firm_Master Control 공식과 CAR_Calc VLOOKUP 범위 오류가 있어, 최종 논문 전 공식 수정 또는 값 고정 검증이 필요하다."
+  ],
+  "methodology": {
+    "event": "Red Sea Crisis / Galaxy Leader seizure. Trigger date 2023-11-19; first trading reaction date 2023-11-20.",
+    "design": "Difference-in-differences panel around event window [-60,+60] trading days.",
+    "treatment": "Tanker-focused listed shipping firms. Control group is dry-bulk-focused listed shipping firms.",
+    "outcomes": [
+      "Daily abnormal return from market model",
+      "Daily raw return",
+      "CAR windows [-1,+5], [-1,+10], [-1,+20]",
+      "Market Cap/EV/EV-EBITDA/P-B event-window reaction when vendor valuation panel is available"
+    ],
+    "core_coefficient": "Treat×Post measures incremental post-shock reaction of tanker firms relative to dry-bulk/control firms.",
+    "caution": "This is a vendor-extract audit and preliminary regression run. Thesis-final inference should use corrected formulas, reconciled source labels, Bloomberg/LSEG/Refinitiv date-stamped valuation ledger for Market Cap/EV/EBITDA, and Stata/Python/R rerun with clustered standard errors."
+  },
+  "completed_workbook": {
+    "path": "Red_Sea_DiD_Model_completed.xlsx",
+    "actions": [
+      "Fixed Firm_Master control formulas",
+      "Filled CAR_Calc_Template metadata formulas",
+      "Added audit, regression, valuation, source, Stata, and thesis-note sheets"
+    ]
+  },
+  "thesis_draft": {
+    "path": "red_sea_thesis_draft.md",
+    "note": "논문 초안은 대시보드에서 바로 볼 수 있고, Stata 패키지에는 백업 파일로도 생성됩니다."
+  }
+}

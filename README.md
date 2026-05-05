@@ -19,6 +19,7 @@ python3 -m http.server 4173
 - `data/listed_fleet_counts.json`: 공식 공개자료로 확인한 상장 해운사 선대 수
 - `data/open_source_tools.json`: 가치평가·공시 수집에 쓸 오픈소스/GitHub 도구 목록
 - `data/research_blueprint.json`: 논문 주제, 가설, 변수, 방법론, 공개 데이터 출처 목록
+- `data/bloomberg_valuation_event_panel_template.csv`: Bloomberg/LSEG/Refinitiv 날짜별 밸류에이션 원장 업로드 템플릿
 
 ## 화면 사용 흐름
 
@@ -122,6 +123,11 @@ python3 -m http.server 4173
 - `분석 방법` 문장과 `실제 분석 결과`의 실행 버튼을 누르면 중앙값 비교, Mann-Whitney U/Welch t-test 근사, 60/70/80% 민감도 분석, verified 표본 강건성 분석, 선대 규모 효과, 공시 품질 비교가 화면에서 바로 계산됩니다.
 - 각 분석 결과 아래에는 논문에 옮겨 적기 전 확인할 수 있는 `논문용 해석 초안`이 표시됩니다.
 - 상단 `논문 초안` 버튼은 현재 연구 주제, 표본 상태, 실제 결과값, 해석, 한계, 참고문헌 수집 링크를 하나의 마크다운 초안으로 미리 보여줍니다.
+- 첨부한 `Red_Sea_DiD_Model_drafting.xlsx`는 `scripts/analyze_red_sea_did.py`로 감사·회귀 요약을 만들고, 앱의 `해운 Shock 회귀 워크벤치(현재 사례: 홍해)`에서 데이터 오류, DiD 계수, CAR 차이, 밸류에이션 이벤트 반응, Stata 실행 패키지, 논문 차별화 메모를 확인합니다.
+- 논문 초안은 대시보드의 `논문 초안` 탭에서 바로 읽을 수 있고, 필요한 경우 마크다운 또는 엑셀용 CSV로 내려받습니다. 완성 엑셀에는 `Thesis_Draft_Notes` 시트도 같이 들어갑니다.
+- Stata 실행용 로컬 패키지는 `red_sea_stata_package` 폴더에 생성됩니다. Windows/LG 노트북에서는 `run_red_sea_stata_windows.bat`를 더블클릭하고, 공통 실행 파일은 `red_sea_regression.do`입니다.
+- Market Cap/EV/EBITDA 이벤트 반응은 현재 B등급 검증용 재구성값으로 제공됩니다. Bloomberg/LSEG/Refinitiv 날짜별 원장을 `bloomberg_valuation_event_panel_template.csv` 형식으로 맞추면 A등급 확정 원장으로 교체해 같은 회귀 흐름에서 다시 돌릴 수 있습니다.
+- Bloomberg/Refinitiv/LSEG/Clarksons 같은 라이선스 원자료는 공개 GitHub Pages에 올리지 말고, 동생에게는 Stata 패키지 폴더를 별도로 전달하세요.
 - 데이터룸의 `추천 개선 로드맵`에는 DuckDB-Wasm, ECharts, Observable Plot, Danfo.js, EdgarTools MCP 등 적용 가능한 오픈소스 후보와 우선순위가 표시됩니다.
 - 상단 `논문 패키지` 버튼은 현재 표본 상태, 데이터 한계, 선택한 연구 주제, 가설, 방법론, 공개 데이터·오픈소스 링크를 마크다운으로 미리 보여줍니다.
 

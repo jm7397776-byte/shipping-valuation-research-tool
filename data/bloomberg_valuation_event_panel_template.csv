@@ -1,0 +1,2 @@
+Date,RIC,Company_Name,PX_LAST,CUR_MKT_CAP,ENTERPRISE_VALUE,EBITDA,NET_DEBT,TOTAL_DEBT,CASH,BOOK_EQUITY,EQY_SH_OUT,EQY_FUND_CRNCY,Source,Source_Timestamp,Vendor_Function,Notes
+2023-11-17,EXAMPLE.RIC,Example Shipping Co,100,1000000000,1200000000,150000000,200000000,300000000,100000000,700000000,10000000,USD,Bloomberg,2026-05-05T00:00:00,BQL/BDH/BDP,Replace this sample row with licensed vendor export; do not publish raw licensed ledger on public GitHub.

@@ -5,6 +5,8 @@ const state = {
   officialFleet: [],
   openSourceTools: [],
   researchBlueprint: { topics: [], data_sources: [], workflow: [] },
+  redSeaShock: null,
+  activeShockTab: "overview",
   activeTopic: "fleet_mix",
   activeWorkflowStep: "valuation",
   activeAnalysisMethod: "median",
@@ -181,6 +183,13 @@ function fmtNumber(value, digits = 0) {
 function fmtPct(value) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "-";
   return `${fmtNumber(value, 0)}%`;
+}
+
+function fmtSignedPercent(value, digits = 2) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
+  const scaled = value * 100;
+  const sign = scaled > 0 ? "+" : "";
+  return `${sign}${fmtNumber(scaled, digits)}%`;
 }
 
 function fmtMultiple(value) {
@@ -696,6 +705,644 @@ function renderResearchCockpit() {
   });
 }
 
+function coefficient(model, term) {
+  return model?.coefficients?.find((item) => item.term === term) ?? null;
+}
+
+function redSeaModelRows() {
+  return state.redSeaShock?.regressions ?? [];
+}
+
+function buildStataReadmeText() {
+  const shock = state.redSeaShock;
+  if (!shock) return "해운 shock 분석 데이터가 아직 로드되지 않았습니다.";
+  const files = shock.stata_package?.files ?? [];
+  const lines = [
+    "# 해운 Shock Stata 실행 패키지 (현재 사례: 홍해)",
+    "",
+    "## 목적",
+    "",
+    "상장 탱커/벌커 선사의 홍해 shock 반응을 Difference-in-Differences 및 event-study 형태로 재검정합니다.",
+    "",
+    "## 로컬 생성 위치",
+    "",
+    `- 폴더: ${shock.stata_package?.directory ?? "미생성"}`,
+    ...files.map((file) => `- ${file}`),
+    "",
+    "## Windows / LG 노트북 실행 순서",
+    "",
+    "1. `red_sea_stata_package` 폴더 전체를 Windows PC로 보냅니다.",
+    "2. Stata가 설치되어 있으면 `run_red_sea_stata_windows.bat`를 더블클릭합니다.",
+    "3. 자동 실행이 안 되면 Stata를 열고 `red_sea_regression.do`를 직접 열어 전체 실행합니다.",
+    "4. 생성되는 `red_sea_regression_table.rtf`, `red_sea_regression_table.csv`, `red_sea_event_path.png`, `red_sea_stata_run.log`를 확인합니다.",
+    "",
+    "## 포함된 오픈소스/Stata 패키지",
+    "",
+    "- `reghdfe`: 기업 고정효과와 이벤트일 고정효과를 흡수하는 Stata 회귀 패키지",
+    "- `estout/esttab`: 논문용 회귀표 export 패키지",
+    "",
+    "## 논문 전 필수 확인",
+    "",
+    "- 첨부 원본은 Refinitiv/LSEG로 표기되어 있으므로 Bloomberg 원자료라면 Bloomberg 추출 로그를 별도 증거로 추가해야 합니다.",
+    "- `Firm_Master` Control 공식과 `CAR_Calc_Template` VLOOKUP 오류를 수정하거나, 수정 전/후 결과가 같은지 검증해야 합니다.",
+    "- 최종 p-value는 Stata에서 firm-level clustered SE 또는 필요한 경우 two-way clustered SE로 확정하세요.",
+  ];
+  return lines.join("\n");
+}
+
+function buildOriginalityText() {
+  const shock = state.redSeaShock;
+  const originality = shock?.originality;
+  if (!originality) return "독창성 점검 데이터가 아직 로드되지 않았습니다.";
+  const base = coefficient(redSeaModelRows()[0], "Treat_Post");
+  const controlled = coefficient(redSeaModelRows()[1], "Treat_Post");
+  const lines = [
+    "# 논문 차별화·표절 방지 메모",
+    "",
+    "## 차별화 연구 질문",
+    "",
+    originality.thesis_angle,
+    "",
+    "## 연구 공백",
+    "",
+    originality.research_gap,
+    "",
+    "## 현재 데이터에서 나온 고유 결과",
+    "",
+    `- Base DiD Treat×Post: ${fmtSignedPctPoint(base?.coef)} / p=${fmtP(base?.p_approx)} / ${significanceLabel(base?.p_approx)}`,
+    `- Controlled DiD Treat×Post: ${fmtSignedPctPoint(controlled?.coef)} / p=${fmtP(controlled?.p_approx)} / ${significanceLabel(controlled?.p_approx)}`,
+    `- 표본: ${shock.summary?.included_firms}개 포함 회사, DiD panel ${fmtNumber(shock.summary?.did_rows)}행, ${shock.summary?.did_firms}개 패널 회사`,
+    "",
+    "## 겹치지 않게 쓰는 원칙",
+    "",
+    ...(originality.plagiarism_guard ?? []).map((text) => `- ${text}`),
+    "",
+    "## 문장 작성 규칙",
+    "",
+    "- 다른 논문 문장을 가져오지 않고, 내 표본 정의와 회귀 결과를 먼저 쓴다.",
+    "- 문헌은 방법론 위치와 선행연구 대비 차이를 설명할 때만 인용한다.",
+    "- 앱이 만든 초안은 제출문이 아니라 구조 초안이다. 최종 문장은 직접 다듬고 인용표기를 붙인다.",
+  ];
+  return lines.join("\n");
+}
+
+function buildRedSeaDraftText() {
+  const shock = state.redSeaShock;
+  if (!shock) return "해운 shock 분석 데이터가 아직 로드되지 않았습니다.";
+  const base = coefficient(redSeaModelRows()[0], "Treat_Post");
+  const freight = coefficient(redSeaModelRows()[2], "BDI_Return");
+  const checks = shock.checks ?? [];
+  const highIssues = checks.filter((item) => item.severity === "High");
+  const carRows = shock.car_summary ?? [];
+  const valuationRows = shock.valuation_reaction?.summary ?? [];
+  const valuationPolicy = shock.valuation_reaction?.meta?.policy ?? {};
+  const lines = [
+    "# 해운 Shock과 상장 탱커·벌커 선사의 시장·밸류에이션 반응 초안",
+    "",
+    "## 초록",
+    "",
+    `본 연구의 목적은 해운 shock이 상장 탱커 주력 선사와 벌커 주력 선사의 주가, 초과수익률, 기업가치평가에 미치는 차별적 반응을 검정하는 것이다. 현재 실증 사례는 첨부 엑셀의 홍해 공급망 shock이며, 동일 구조로 다른 해운 shock도 교체 분석할 수 있다. 분석 표본은 ${shock.summary.included_firms}개 포함 회사와 ${fmtNumber(shock.summary.did_rows)}개의 회귀 패널 관측치로 구성되며, 종속변수는 시장모형으로 산출한 일별 초과수익률과 CAR이다. 핵심 DiD 계수인 Treat×Post는 Base 모형에서 ${fmtSignedPctPoint(base?.coef)}로 추정되었고 p-value는 ${fmtP(base?.p_approx)}이다. 다만 원본 엑셀의 공식 감사에서 ${highIssues.length}개의 높은 등급 오류 유형이 확인되어, 최종 논문에서는 공식 수정 및 Stata 재실행 결과를 기준으로 결론을 확정한다.`,
+    "",
+    "## 1. 연구 질문",
+    "",
+    shock.originality?.thesis_angle ?? "",
+    "",
+    "## 2. 데이터와 출처",
+    "",
+    `주가·재무·시장지수 원자료는 첨부 엑셀상 Refinitiv/LSEG Workspace로 표기되어 있으며, 운임지수는 Clarksons SIN/Baltic 계열 자료로 기재되어 있다. 사용자는 Bloomberg 추출을 언급했으므로, 최종 제출 전 Bloomberg 추출 로그 또는 Refinitiv/LSEG 출처 표기를 하나로 확정해야 한다. 데이터 기간은 ${shock.summary.price_date_min}부터 ${shock.summary.price_date_max}까지이며, 주가 관측치는 ${fmtNumber(shock.summary.price_observations)}개이다.`,
+    "",
+    "## 3. 방법론",
+    "",
+    "기본 모형은 `AR_it = alpha + beta1 Treat_i + beta2 Post_t + beta3 Treat_i x Post_t + controls + error_it`이다. 여기서 beta3는 해운 shock 이후 탱커 주력 선사가 벌커 통제군 대비 보인 추가 반응을 의미한다. Stata 최종본에서는 기업 단위 clustered standard error, 기업 고정효과, 이벤트일 고정효과를 포함한 강건성 검정을 수행한다.",
+    "",
+    "## 4. 예비 결과",
+    "",
+    ...markdownTable(
+      ["모형", "핵심 변수", "계수", "t", "p-value", "판정"],
+      redSeaModelRows().map((model) => {
+        const item = coefficient(model, "Treat_Post");
+        return [
+          model.name,
+          "Treat×Post",
+          fmtSignedPctPoint(item?.coef),
+          fmtNumber(item?.t, 2),
+          fmtP(item?.p_approx),
+          significanceLabel(item?.p_approx),
+        ];
+      }),
+    ),
+    "",
+    "CAR 요약:",
+    "",
+    ...markdownTable(
+      ["창", "탱커 평균", "통제 평균", "차이"],
+      carRows.map((row) => [
+        row.metric,
+        fmtSignedPctPoint(row.tanker_avg),
+        fmtSignedPctPoint(row.control_avg),
+        fmtSignedPctPoint(row.difference),
+      ]),
+    ),
+    "",
+    `운임 민감도 모형에서 BDI_Return 계수는 ${fmtNumber(freight?.coef, 4)}이며 p-value는 ${fmtP(freight?.p_approx)}이다. 이는 벌크 운임 환경 변수와 주가 초과수익률 간 관계를 별도 통제해야 함을 시사한다.`,
+    "",
+    "## 5. 기업가치평가 반응",
+    "",
+    `${valuationPolicy.current_grade_ko ?? "현재 자동 계산값은 B등급 검증용 재구성 패널입니다."} 논문 최종본에서는 ${valuationPolicy.bloomberg_grade_requirement ?? "Bloomberg/LSEG/Refinitiv 날짜별 원장"}을 사용해 Market Cap, EV, EBITDA, P/B를 같은 기준일로 맞춘다.`,
+    "",
+    ...markdownTable(
+      ["그룹", "N", "Market Cap 변화", "EV 변화", "EV/EBITDA 변화", "P/B 변화"],
+      valuationRows.map((row) => [
+        row.group,
+        fmtNumber(row.n),
+        fmtSignedPercent(row.market_cap_change_pct),
+        fmtSignedPercent(row.enterprise_value_change_pct),
+        fmtNumber(row.ev_ebitda_change, 3),
+        fmtNumber(row.pb_change, 3),
+      ]),
+    ),
+    "",
+    "## 6. 데이터 검정과 한계",
+    "",
+    ...checks.map((item) => `- [${item.severity}] ${item.check_ko ?? item.check}: ${item.detail_ko ?? item.detail}`),
+    "",
+    "## 7. 독창성 확보",
+    "",
+    shock.originality?.research_gap ?? "",
+    "",
+    "본 논문은 기존 문헌의 문장을 차용하지 않고, 본인이 구성한 상장사 표본·선대 노출도·해운 shock 이벤트 정의·Stata 재현 결과를 중심으로 논리를 전개한다.",
+  ];
+  return lines.join("\n");
+}
+
+function csvEscape(value) {
+  const text = value === null || value === undefined ? "" : String(value);
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function buildRedSeaDraftCsv() {
+  const content = buildRedSeaDraftText();
+  const rows = [["Section", "Text"]];
+  let section = "제목";
+  content.split("\n").forEach((line) => {
+    if (line.startsWith("## ")) {
+      section = line.replace(/^##\s+/, "").trim();
+      return;
+    }
+    if (!line.trim() || line.startsWith("# ")) return;
+    rows.push([section, line]);
+  });
+  return rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+}
+
+function buildLedgerTemplateReadmeText() {
+  const policy = state.redSeaShock?.valuation_reaction?.meta?.policy ?? {};
+  return [
+    "# Bloomberg급 확정 원장 연결 방법",
+    "",
+    "## 왜 필요한가",
+    "",
+    "주가 반응과 CAR은 현재 첨부 엑셀로 바로 검정할 수 있습니다. 하지만 Market Cap, EV, EBITDA, EV/EBITDA의 이벤트 전후 반응은 같은 기준일의 날짜별 원장이 있어야 확정할 수 있습니다.",
+    "",
+    "## 현재 등급",
+    "",
+    policy.current_grade_ko ?? "현재 자동 생성값은 B등급 검증용입니다.",
+    "",
+    "## A등급 확정 원장 조건",
+    "",
+    policy.bloomberg_grade_requirement ?? "Bloomberg BDH/BQL/PORT 또는 LSEG/Refinitiv에서 날짜별 원장을 추출해 업로드합니다.",
+    "",
+    "## 공개 오픈소스의 역할",
+    "",
+    policy.public_open_source_role ?? "yfinance/OpenBB/SEC/FRED는 교차검증과 누락 탐지용입니다.",
+    "",
+    "## 템플릿",
+    "",
+    "- 앱 상단의 원장 템플릿 CSV를 내려받아 Bloomberg/LSEG export 필드와 맞춥니다.",
+    "- 필수 필드: Date, RIC, Company_Name, PX_LAST, CUR_MKT_CAP, ENTERPRISE_VALUE, EBITDA, NET_DEBT, TOTAL_DEBT, CASH, BOOK_EQUITY, EQY_SH_OUT, EQY_FUND_CRNCY, Source, Source_Timestamp",
+    "- 라이선스 원장은 공개 GitHub에 올리지 말고 Stata 패키지 또는 개인 전달용 폴더로만 공유합니다.",
+  ].join("\n");
+}
+
+function showRedSeaPreview(kind) {
+  const payload =
+    kind === "stata"
+      ? {
+          title: "Stata 실행 패키지",
+          filename: "red_sea_stata_readme.md",
+          content: buildStataReadmeText(),
+          type: "markdown",
+        }
+      : kind === "draftExcel"
+        ? {
+            title: "논문 초안 엑셀용 CSV",
+            filename: "shipping_shock_thesis_draft_for_excel.csv",
+            content: buildRedSeaDraftCsv(),
+            type: "csv",
+          }
+        : kind === "ledger"
+          ? {
+              title: "Bloomberg급 확정 원장 안내",
+              filename: "bloomberg_grade_ledger_readme.md",
+              content: buildLedgerTemplateReadmeText(),
+              type: "markdown",
+              sourceUrl: "./data/bloomberg_valuation_event_panel_template.csv",
+            }
+      : kind === "originality"
+        ? {
+            title: "논문 차별화·표절 방지 메모",
+            filename: "red_sea_originality_guard.md",
+            content: buildOriginalityText(),
+            type: "markdown",
+          }
+        : {
+            title: "해운 Shock 논문 초안",
+            filename: "shipping_shock_thesis_draft.md",
+            content: buildRedSeaDraftText(),
+            type: "markdown",
+          };
+  showPreview(payload);
+}
+
+function renderMiniRegressionTable(models) {
+  const rows = models.map((model) => {
+    const item = coefficient(model, "Treat_Post");
+    return [
+      model.name.replace(": ", "<br>"),
+      fmtSignedPctPoint(item?.coef),
+      fmtNumber(item?.t, 2),
+      fmtP(item?.p_approx),
+      significanceLabel(item?.p_approx),
+    ];
+  });
+  return `
+    <div class="analysis-table-wrap shock-table-wrap">
+      <table class="analysis-table">
+        <thead>
+          <tr>
+            <th>모형</th>
+            <th>Treat×Post</th>
+            <th>t</th>
+            <th>p</th>
+            <th>판정</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows
+            .map(
+              (row) => `
+                <tr>
+                  <td>${row[0]}</td>
+                  <td>${escapeHtml(row[1])}</td>
+                  <td>${escapeHtml(row[2])}</td>
+                  <td>${escapeHtml(row[3])}</td>
+                  <td>${escapeHtml(row[4])}</td>
+                </tr>
+              `,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+const SHOCK_TABS = [
+  ["overview", "개요"],
+  ["audit", "데이터 검정"],
+  ["regression", "회귀 결과"],
+  ["valuation", "밸류에이션"],
+  ["ledger", "원장·정확도"],
+  ["stata", "Stata 실행"],
+  ["thesis", "논문 초안"],
+];
+
+function renderValuationReactionTable(shock) {
+  const rows = shock.valuation_reaction?.summary ?? [];
+  if (!rows.length) return `<p>밸류에이션 반응 요약을 아직 계산하지 못했습니다.</p>`;
+  return `
+    <div class="analysis-table-wrap shock-table-wrap">
+      <table class="analysis-table">
+        <thead>
+          <tr>
+            <th>그룹</th>
+            <th>N</th>
+            <th>Market Cap</th>
+            <th>EV</th>
+            <th>EV/EBITDA</th>
+            <th>P/B</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows
+            .map(
+              (row) => `
+                <tr>
+                  <td>${escapeHtml(row.group)}</td>
+                  <td>${fmtNumber(row.n)}</td>
+                  <td>${fmtSignedPercent(row.market_cap_change_pct)}</td>
+                  <td>${fmtSignedPercent(row.enterprise_value_change_pct)}</td>
+                  <td>${fmtNumber(row.ev_ebitda_change, 3)}</td>
+                  <td>${fmtNumber(row.pb_change, 3)}</td>
+                </tr>
+              `,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderLedgerRequirements(shock) {
+  const policy = shock.valuation_reaction?.meta?.policy ?? {};
+  const missing = shock.valuation_reaction?.meta?.missing ?? [];
+  return `
+    <div class="ledger-grid">
+      <div>
+        <h4>현재 등급</h4>
+        <p>${escapeHtml(policy.current_grade_ko ?? "현재 자동 생성값은 B등급 검증용입니다.")}</p>
+      </div>
+      <div>
+        <h4>A등급 확정 원장 조건</h4>
+        <p>${escapeHtml(policy.bloomberg_grade_requirement ?? "")}</p>
+      </div>
+      <div>
+        <h4>오픈소스 역할</h4>
+        <p>${escapeHtml(policy.public_open_source_role ?? "")}</p>
+      </div>
+      <div>
+        <h4>필수 템플릿</h4>
+        <p>Date, RIC, PX_LAST, CUR_MKT_CAP, ENTERPRISE_VALUE, EBITDA, NET_DEBT, EQY_SH_OUT, EQY_FUND_CRNCY, Source, Source_Timestamp</p>
+      </div>
+    </div>
+    <div class="source-actions">
+      <button type="button" data-redsea-preview="ledger">원장 연결 방법 보기</button>
+      <a href="./data/bloomberg_valuation_event_panel_template.csv" target="_blank" rel="noopener">Bloomberg 원장 템플릿 CSV</a>
+    </div>
+    ${
+      missing.length
+        ? `<p class="analysis-note">자동 재구성에서 누락된 항목 ${fmtNumber(missing.length)}건이 있습니다. 원장 업로드 후 이 목록은 재검정 대상입니다.</p>`
+        : ""
+    }
+  `;
+}
+
+function renderShockTabContent(shock, checks) {
+  const tab = state.activeShockTab;
+  if (tab === "audit") {
+    return `
+      <div class="shock-card full">
+        <h3>데이터 검정 한글 해석</h3>
+        <div class="audit-list">
+          ${checks
+            .map(
+              (item) => `
+                <button type="button" data-redsea-preview="stata" class="${item.severity.toLowerCase()}">
+                  <strong>${escapeHtml(item.severity)} · ${escapeHtml(item.check_ko ?? item.check)}</strong>
+                  <span>${escapeHtml(item.detail_ko ?? item.detail)}</span>
+                  <em>${escapeHtml(item.fix_ko ?? item.fix)}</em>
+                </button>
+              `,
+            )
+            .join("")}
+        </div>
+      </div>
+    `;
+  }
+  if (tab === "regression") {
+    return `
+      <div class="shock-card full">
+        <h3>회귀 결과</h3>
+        ${renderMiniRegressionTable(redSeaModelRows())}
+        <p>브라우저 계산은 예비 검정입니다. 최종 제출 수치는 Windows/LG 노트북의 Stata에서 red_sea_regression.do를 재실행한 clustered SE 결과로 확정하세요.</p>
+        <canvas id="redSeaEventChart" width="900" height="300"></canvas>
+      </div>
+    `;
+  }
+  if (tab === "valuation") {
+    return `
+      <div class="shock-card full">
+        <h3>기업가치평가 반응</h3>
+        <p>현재 표본의 가격·재무 스냅샷을 연결해 이벤트 전후 Market Cap, EV, EV/EBITDA, P/B 변화를 계산했습니다. 이 값은 검증용 B등급이며, Bloomberg/LSEG 날짜별 원장을 업로드하면 A등급 확정값으로 교체하는 구조입니다.</p>
+        ${renderValuationReactionTable(shock)}
+        <div class="originality-list">
+          <span>패널 행: ${fmtNumber(shock.valuation_reaction?.panel_rows)}개</span>
+          <span>패널 회사: ${fmtNumber(shock.valuation_reaction?.panel_firms)}개</span>
+          <span>요약 창: ${escapeHtml(shock.valuation_reaction?.event_window ?? "[-20,+20]")}</span>
+        </div>
+      </div>
+    `;
+  }
+  if (tab === "ledger") {
+    return `
+      <div class="shock-card full">
+        <h3>Bloomberg급 원장·정확도</h3>
+        ${renderLedgerRequirements(shock)}
+      </div>
+    `;
+  }
+  if (tab === "stata") {
+    return `
+      <div class="shock-card full">
+        <h3>Windows/LG 노트북 Stata 실행</h3>
+        <p>${escapeHtml(shock.stata_package?.note ?? "")}</p>
+        <code>폴더: ${escapeHtml(shock.stata_package?.directory ?? "red_sea_stata_package")}</code>
+        <code>실행: ${escapeHtml(shock.stata_package?.windows_run_command ?? "run_red_sea_stata_windows.bat")}</code>
+        <div class="stata-file-list">
+          ${(shock.stata_package?.files ?? [])
+            .map((file) => `<span>${escapeHtml(file.split("/").pop())}</span>`)
+            .join("")}
+        </div>
+      </div>
+    `;
+  }
+  if (tab === "thesis") {
+    return `
+      <div class="shock-card full">
+        <h3>대시보드 논문 초안</h3>
+        <p>아래 초안은 폴더를 열지 않고 바로 볼 수 있습니다. 필요하면 상단 버튼으로 마크다운 또는 엑셀용 CSV로 내려받아 문단별로 편집하세요.</p>
+        <div class="originality-list">
+          <span>완성 엑셀: Red_Sea_DiD_Model_completed.xlsx 안의 Thesis_Draft_Notes 시트</span>
+          <span>백업 초안 파일: red_sea_stata_package / red_sea_thesis_draft.md</span>
+          <span>표절 방지: 다른 논문 문장이 아니라 이 데이터의 표본·계수·검정 로그 중심으로 작성</span>
+        </div>
+        <div class="source-actions">
+          <button type="button" data-redsea-preview="draft">마크다운 미리보기</button>
+          <button type="button" data-redsea-preview="draftExcel">엑셀용 CSV 다운로드</button>
+        </div>
+        <pre class="thesis-draft-inline">${escapeHtml(buildRedSeaDraftText())}</pre>
+      </div>
+    `;
+  }
+  return `
+    <div class="shock-card">
+      <h3>무엇을 보면 되나</h3>
+      <p>${escapeHtml(shock.originality?.thesis_angle ?? "")}</p>
+      <div class="originality-list">
+        <span>1. 데이터 검정 탭에서 오류와 출처 문제 확인</span>
+        <span>2. 회귀 결과 탭에서 Treat×Post 방향과 p-value 확인</span>
+        <span>3. 밸류에이션 탭에서 Market Cap/EV/EV-EBITDA 반응 확인</span>
+        <span>4. 원장·정확도 탭에서 Bloomberg급 확정 원장 조건 확인</span>
+        <span>5. 논문 초안 탭에서 바로 초안 확인</span>
+      </div>
+    </div>
+    <div class="shock-card">
+      <h3>논문 차별화</h3>
+      <p>${escapeHtml(shock.originality?.research_gap ?? "")}</p>
+      <p class="analysis-note">현재 홍해는 첨부 엑셀에 들어있는 실증 사례입니다. 연구의 큰 틀은 특정 사건명이 아니라 해운 shock 일반에 대한 주가·CAR·밸류에이션 반응 분석입니다.</p>
+    </div>
+  `;
+}
+
+function renderRedSeaWorkbench() {
+  const shock = state.redSeaShock;
+  if (!shock) {
+    $("redSeaWorkbench").innerHTML = "";
+    return;
+  }
+  const summary = shock.summary ?? {};
+  const checks = shock.checks ?? [];
+  const highCount = checks.filter((item) => item.severity === "High").length;
+  const base = coefficient(redSeaModelRows()[0], "Treat_Post");
+  const controlled = coefficient(redSeaModelRows()[1], "Treat_Post");
+  const freightBdi = coefficient(redSeaModelRows()[2], "BDI_Return");
+  const statusClass = highCount ? "risk" : "ok";
+  $("redSeaWorkbench").innerHTML = `
+    <div class="shock-head">
+      <div>
+        <span>Shock Regression Workbench</span>
+        <strong>해운 Shock: 탱커 vs 벌커 반응 분석</strong>
+        <p>현재 사례는 첨부 엑셀의 홍해 위기입니다. 해운지수·경제지수·회사 재무정보를 연결해 주가, CAR, 밸류에이션 반응 회귀로 확장하는 구조입니다.</p>
+      </div>
+      <div class="shock-actions">
+        <button type="button" data-redsea-preview="draft">해운 Shock 논문 초안</button>
+        <button type="button" data-redsea-preview="draftExcel">초안 엑셀용 CSV</button>
+        <button type="button" data-redsea-preview="ledger">원장·정확도</button>
+        <button type="button" data-redsea-preview="stata">Stata 패키지</button>
+        <button type="button" data-redsea-preview="originality">차별화 메모</button>
+      </div>
+    </div>
+    <div class="shock-kpis">
+      <div>
+        <span>표본</span>
+        <strong>${fmtNumber(summary.included_firms)}개 회사</strong>
+        <em>탱커 ${fmtNumber(summary.tanker_firms)} · 통제 ${fmtNumber(summary.control_firms)} · 패널 ${fmtNumber(summary.did_rows)}행</em>
+      </div>
+      <div class="${statusClass}">
+        <span>데이터 감사</span>
+        <strong>${highCount ? `High ${highCount}건` : "중대 오류 없음"}</strong>
+        <em>중복 price key ${fmtNumber(summary.duplicate_price_keys)} · return 결측 ${fmtNumber(summary.price_missing_return)}</em>
+      </div>
+      <div>
+        <span>Base DiD</span>
+        <strong>${fmtSignedPctPoint(base?.coef)}</strong>
+        <em>p=${fmtP(base?.p_approx)} · ${significanceLabel(base?.p_approx)}</em>
+      </div>
+      <div>
+        <span>Controlled DiD</span>
+        <strong>${fmtSignedPctPoint(controlled?.coef)}</strong>
+        <em>p=${fmtP(controlled?.p_approx)} · ${significanceLabel(controlled?.p_approx)}</em>
+      </div>
+      <div>
+        <span>BDI 민감도</span>
+        <strong>${fmtNumber(freightBdi?.coef, 3)}</strong>
+        <em>p=${fmtP(freightBdi?.p_approx)} · 운임 환경 변수</em>
+      </div>
+      <div>
+        <span>EV 패널</span>
+        <strong>${fmtNumber(shock.valuation_reaction?.panel_firms)}개사</strong>
+        <em>${escapeHtml(shock.valuation_reaction?.meta?.policy?.current_grade ?? "B-reconstructed")} · Bloomberg 원장 교체 가능</em>
+      </div>
+    </div>
+    <div class="shock-tabs">
+      ${SHOCK_TABS.map(
+        ([key, label]) => `
+          <button type="button" class="${state.activeShockTab === key ? "active" : ""}" data-shock-tab="${key}">
+            ${escapeHtml(label)}
+          </button>
+        `,
+      ).join("")}
+    </div>
+    <div class="shock-body">
+      ${renderShockTabContent(shock, checks)}
+    </div>
+  `;
+  document.querySelectorAll("[data-shock-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeShockTab = button.dataset.shockTab;
+      renderRedSeaWorkbench();
+    });
+  });
+  document.querySelectorAll("[data-redsea-preview]").forEach((button) => {
+    button.addEventListener("click", () => showRedSeaPreview(button.dataset.redseaPreview));
+  });
+  drawRedSeaEventPath();
+}
+
+function drawRedSeaEventPath() {
+  const canvas = $("redSeaEventChart");
+  if (!canvas || !state.redSeaShock?.event_path?.length) return;
+  const rows = state.redSeaShock.event_path.filter((row) => Number.isFinite(row.event_day));
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const cssWidth = canvas.clientWidth || 720;
+  const cssHeight = Math.max(240, Math.round(cssWidth * 0.34));
+  canvas.width = cssWidth * dpr;
+  canvas.height = cssHeight * dpr;
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+  const pad = { left: 44, right: 20, top: 16, bottom: 34 };
+  const w = cssWidth - pad.left - pad.right;
+  const h = cssHeight - pad.top - pad.bottom;
+  const xs = rows.map((row) => row.event_day);
+  const ys = rows.map((row) => row.car_diff).filter(Number.isFinite);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(-0.02, ...ys);
+  const maxY = Math.max(0.02, ...ys);
+  const xScale = (x) => pad.left + ((x - minX) / (maxX - minX || 1)) * w;
+  const yScale = (y) => pad.top + h - ((y - minY) / (maxY - minY || 1)) * h;
+
+  ctx.strokeStyle = "#d8dee7";
+  ctx.lineWidth = 1;
+  [0, minY, maxY].forEach((y) => {
+    const yy = yScale(y);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, yy);
+    ctx.lineTo(pad.left + w, yy);
+    ctx.stroke();
+  });
+  const zeroX = xScale(0);
+  ctx.beginPath();
+  ctx.moveTo(zeroX, pad.top);
+  ctx.lineTo(zeroX, pad.top + h);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#0f766e";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  rows.forEach((row, index) => {
+    const x = xScale(row.event_day);
+    const y = yScale(row.car_diff);
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  rows.forEach((row) => {
+    const x = xScale(row.event_day);
+    const y = yScale(row.car_diff);
+    ctx.fillStyle = row.event_day === 0 ? "#991b1b" : "#0f766e";
+    ctx.beginPath();
+    ctx.arc(x, y, row.event_day === 0 ? 5 : 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.fillStyle = "#637083";
+  ctx.font = "12px Inter, sans-serif";
+  ctx.fillText("Event day", pad.left + w - 62, cssHeight - 10);
+  ctx.fillText("CAR diff", 6, pad.top + 12);
+}
+
 function buildRawFleetSummary() {
   const byCompany = new Map();
   const seen = new Set();
@@ -1118,6 +1765,7 @@ function render() {
   renderDirectoryWorkflow();
   renderKpis(rows);
   renderResearchCockpit();
+  renderRedSeaWorkbench();
   renderCompanyDashboard();
   renderValuation(rows);
   renderFleetSummary();
@@ -1677,6 +2325,21 @@ function fmtP(value) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "-";
   if (value < 0.001) return "<0.001";
   return fmtNumber(value, 3);
+}
+
+function fmtSignedPctPoint(value, digits = 2) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
+  const scaled = value * 100;
+  const sign = scaled > 0 ? "+" : "";
+  return `${sign}${fmtNumber(scaled, digits)}%p`;
+}
+
+function significanceLabel(pValue) {
+  if (pValue === null || pValue === undefined || !Number.isFinite(pValue)) return "검정 불가";
+  if (pValue < 0.01) return "1% 유의";
+  if (pValue < 0.05) return "5% 유의";
+  if (pValue < 0.1) return "10% 유의";
+  return "유의 약함";
 }
 
 function renderAnalysisTable(headers, rows) {
@@ -2670,12 +3333,13 @@ async function handleFile(event) {
 }
 
 async function init() {
-  const [firmsResponse, fleetResponse, toolsResponse, blueprintResponse, valuationResponse] = await Promise.all([
+  const [firmsResponse, fleetResponse, toolsResponse, blueprintResponse, valuationResponse, redSeaResponse] = await Promise.all([
     fetch("./data/firms.json", { cache: "no-store" }),
     fetch("./data/listed_fleet_counts.json", { cache: "no-store" }),
     fetch("./data/open_source_tools.json", { cache: "no-store" }),
     fetch("./data/research_blueprint.json", { cache: "no-store" }),
     fetch("./data/valuation_inputs_generated.json", { cache: "no-store" }).catch(() => null),
+    fetch("./data/red_sea_shock_analysis.json", { cache: "no-store" }).catch(() => null),
   ]);
   state.firms = (await firmsResponse.json()).map(normalizeFirm);
   state.officialFleet = (await fleetResponse.json()).map(normalizeFleetSummaryRow).filter(Boolean);
@@ -2687,6 +3351,9 @@ async function init() {
       if (row) state.finance.set(row.RIC, row);
     });
     state.financeLoadedFrom = "내장 재무 스냅샷";
+  }
+  if (redSeaResponse?.ok) {
+    state.redSeaShock = await redSeaResponse.json();
   }
   state.activeTopic = state.researchBlueprint.topics?.[0]?.id ?? state.activeTopic;
   $("searchInput").addEventListener("input", (event) => {
