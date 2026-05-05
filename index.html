@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shipping Fleet Classifier</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23111827'/%3E%3Cpath d='M14 40h36l-5 8H20l-6-8Zm5-8h8V18h10v14h8l4 6H16l3-6Z' fill='%230f766e'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Tanker vs Dry Bulk Research Sample</p>
+        <h1>Shipping Fleet Classifier</h1>
+      </div>
+      <div class="header-actions">
+        <label class="file-button">
+          <input id="fileInput" type="file" accept=".csv,.json" />
+          CSV 불러오기
+        </label>
+        <a class="download-link" href="./data/valuation_inputs_template.csv" download>입력 템플릿</a>
+        <button id="exportCsv" type="button">분류 CSV</button>
+        <button id="exportBrief" type="button">연구 노트</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="workspace">
+        <aside class="controls">
+          <div class="control-block">
+            <label for="searchInput">회사 검색</label>
+            <input id="searchInput" type="search" placeholder="Company, RIC" />
+          </div>
+
+          <div class="control-block">
+            <label for="groupFilter">분류</label>
+            <select id="groupFilter">
+              <option value="all">전체</option>
+              <option value="Tanker core">탱커 주력</option>
+              <option value="Dry bulk core">벌커 주력</option>
+              <option value="Mixed / review">혼합·검토</option>
+              <option value="Excluded">제외</option>
+            </select>
+          </div>
+
+          <div class="control-block">
+            <div class="split-label">
+              <label for="tankerThreshold">탱커 최소 비중</label>
+              <span id="tankerThresholdValue">60%</span>
+            </div>
+            <input id="tankerThreshold" type="range" min="40" max="100" value="60" step="5" />
+          </div>
+
+          <div class="control-block">
+            <div class="split-label">
+              <label for="bulkThreshold">벌커 최소 비중</label>
+              <span id="bulkThresholdValue">70%</span>
+            </div>
+            <input id="bulkThreshold" type="range" min="40" max="100" value="70" step="5" />
+          </div>
+
+          <div class="control-block">
+            <div class="split-label">
+              <label for="oppositeThreshold">반대 선종 최대</label>
+              <span id="oppositeThresholdValue">35%</span>
+            </div>
+            <input id="oppositeThreshold" type="range" min="0" max="60" value="35" step="5" />
+          </div>
+
+          <div class="status-block">
+            <span id="dataStatus">표본 55개 로드</span>
+            <span id="financeStatus">가치평가 입력 0개</span>
+          </div>
+
+          <details class="guide" open>
+            <summary>사용 방법</summary>
+            <ol>
+              <li>기본 표본은 자동으로 열립니다.</li>
+              <li>슬라이더로 주력 선종 기준을 조절합니다.</li>
+              <li>입력 템플릿에 재무값을 채운 뒤 CSV로 불러옵니다.</li>
+              <li>분류 CSV 또는 연구 노트를 내려받아 공유합니다.</li>
+            </ol>
+          </details>
+        </aside>
+
+        <section class="analysis">
+          <div class="kpi-strip" id="kpiStrip"></div>
+
+          <div class="chart-grid">
+            <section class="panel">
+              <div class="panel-title">
+                <h2>주력 선종 구분</h2>
+                <span id="includedLabel"></span>
+              </div>
+              <canvas id="compositionChart" width="720" height="320"></canvas>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title">
+                <h2>탱커·벌커 비중 맵</h2>
+                <span>각 점은 1개 상장사</span>
+              </div>
+              <canvas id="scatterChart" width="720" height="320"></canvas>
+            </section>
+          </div>
+
+          <section class="panel valuation-panel">
+            <div class="panel-title">
+              <h2>가치평가 레이어</h2>
+              <span id="valuationSummary">재무 CSV를 불러오면 멀티플이 계산됩니다</span>
+            </div>
+            <div id="valuationGrid" class="valuation-grid"></div>
+          </section>
+
+          <section class="panel table-panel">
+            <div class="panel-title">
+              <h2>회사별 판정표</h2>
+              <span id="rowCount"></span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>판정</th>
+                    <th>회사</th>
+                    <th>RIC</th>
+                    <th>탱커</th>
+                    <th>벌커</th>
+                    <th>원분류</th>
+                    <th>근거</th>
+                    <th>EV/EBITDA</th>
+                  </tr>
+                </thead>
+                <tbody id="firmTable"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <template id="kpiTemplate">
+      <div class="kpi">
+        <span class="kpi-label"></span>
+        <strong class="kpi-value"></strong>
+      </div>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

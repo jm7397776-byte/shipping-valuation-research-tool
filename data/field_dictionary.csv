@@ -1,0 +1,29 @@
+Field,Required,Description
+Firm_ID,Yes,Original firm identifier from the sample workbook
+Company_Name,Yes,Company name
+RIC,Yes,Reuters/Refinitiv instrument code or ticker-like identifier
+Verdict_Fleet_Description,Yes,Fleet description and inclusion/exclusion note
+Segment,Yes,Original candidate segment label
+Tanker_Pct,Yes,Estimated tanker fleet exposure percentage
+DryBulk_Pct,Yes,Estimated dry bulk fleet exposure percentage
+Research_Group,No,Original research grouping generated from source workbook
+Included,No,Original inclusion flag generated from source workbook
+Exclude_Reason,No,Original exclusion reason generated from source workbook
+Fiscal_Year,No,Fiscal year for valuation inputs
+Currency,No,Currency for financial values
+Market_Cap,No,Market capitalization
+Enterprise_Value,No,Enterprise value; if blank app computes Market_Cap + Total_Debt - Cash when available
+Revenue,No,Revenue
+EBITDA,No,EBITDA
+EBIT,No,EBIT
+Net_Income,No,Net income
+Total_Debt,No,Total debt
+Cash,No,Cash and cash equivalents
+Book_Equity,No,Book equity
+Fleet_Total,No,Total fleet vessel count
+Fleet_Tankers,No,Tanker vessel count
+Fleet_Bulkers,No,Dry bulk vessel count
+DWT_Total,No,Total fleet DWT
+Source,No,Data source name or URL
+Source_Date,No,Source as-of date
+Notes,No,Audit notes
