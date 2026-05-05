@@ -2089,6 +2089,107 @@ function buildResearchPackText() {
   return lines.join("\n");
 }
 
+function markdownTable(headers, rows) {
+  return [
+    `| ${headers.join(" | ")} |`,
+    `| ${headers.map(() => "---").join(" | ")} |`,
+    ...rows.map((row) => `| ${row.join(" | ")} |`),
+  ];
+}
+
+function buildCoreResultMarkdown(rows) {
+  const tanker = rowsByGroup(rows, "Tanker core");
+  const bulk = rowsByGroup(rows, "Dry bulk core");
+  const metrics = [
+    ["EV/EBITDA", "EV_EBITDA", fmtMultiple],
+    ["P/B", "P_Book", fmtMultiple],
+    ["EV/Revenue", "EV_Revenue", fmtMultiple],
+    ["EV/Fleet", "EV_Fleet", (value) => fmtNumber(value, 1)],
+  ];
+  const resultRows = metrics.map(([label, key, formatter]) => {
+    const tankerValues = metricValues(tanker, key);
+    const bulkValues = metricValues(bulk, key);
+    return [
+      label,
+      `${formatter(median(tankerValues))} (n=${tankerValues.length})`,
+      `${formatter(median(bulkValues))} (n=${bulkValues.length})`,
+      fmtP(permutationPValue(tankerValues, bulkValues)),
+    ];
+  });
+  return markdownTable(["지표", "탱커 주력", "벌커 주력", "Permutation p-value"], resultRows);
+}
+
+function buildThesisDraftText() {
+  const topic = selectedTopic();
+  const quality = dataQualityMetrics();
+  const rows = analysisDataset();
+  const counts = groupCounts(quality.all);
+  const method = analysisMethodLabel(state.activeAnalysisMethod);
+  const interpretation = rows.length ? methodInterpretation(rows) : "재무 입력이 부족해 분석 결과를 계산하지 못했습니다.";
+  const resultTable = rows.length ? buildCoreResultMarkdown(rows) : ["재무 입력 후 결과표가 생성됩니다."];
+  const searchLinks = researchSearchLinks(topic);
+  const lines = [
+    `# ${topic?.title ?? "해운사 기업가치평가 연구"} 초안`,
+    "",
+    "## 초록",
+    "",
+    `본 연구는 상장 해운사의 주력 선종 구성이 기업가치평가 멀티플에 미치는 영향을 검토한다. 공개 선대 자료와 재무 입력값을 연결해 탱커 주력 기업과 벌커 주력 기업의 EV/EBITDA, P/B, EV/Revenue, EV/Fleet 차이를 비교하였다. 현재 표본은 선대 자료 ${quality.fleetSummary.length}개 회사, 총 ${fmtNumber(quality.vesselCount)}척을 포함하며, 이 중 verified 출처는 ${quality.verified}개 회사이다. 재무 입력은 ${quality.financeCoverage}개 회사에 대해 반영되어 있다. 분석 결과는 연구 설계와 표본 검증을 위한 예비 결과이며, 최종 논문에서는 각 회사의 연차보고서, 20-F/10-K, 감사보고서 원문 확인값으로 재무 입력을 대체해야 한다.`,
+    "",
+    "주요어: 해운업, 선대 구성, 탱커, 벌커, EV/EBITDA, 기업가치평가",
+    "",
+    "## 1. 서론",
+    "",
+    "해운사는 보유 선종과 운임 사이클에 따라 수익 구조와 자산가치 변동성이 크게 달라진다. 탱커, 벌커, 컨테이너, 가스선, 오프쇼어, 여객선 등 선종별 사업 특성이 다르기 때문에 동일한 해운업으로 묶어 기업가치평가를 수행하면 비교기업 선정 오류가 발생할 수 있다. 따라서 본 연구는 상장 해운사의 선대 구성을 기준으로 주력 선종을 분류하고, 선종별 기업가치 멀티플 차이가 나타나는지 확인한다.",
+    "",
+    "## 2. 연구 질문과 가설",
+    "",
+    `연구 질문은 다음과 같다. ${topic?.question ?? ""}`,
+    "",
+    ...((topic?.hypotheses ?? []).map((text) => `- ${text}`)),
+    "",
+    "## 3. 데이터와 표본",
+    "",
+    `본 연구의 기본 분류 표본은 ${state.firms.length}개 상장 해운사이며, 현재 판정 기준에서 탱커 주력 ${counts["Tanker core"]}개, 벌커 주력 ${counts["Dry bulk core"]}개, 혼합·검토 ${counts["Mixed / review"]}개, 제외 ${counts.Excluded}개로 구분된다. 선대 자료는 회사 공식 fleet page, 연차보고서, SEC filing 등 공개 출처를 사용하며, 각 행에는 기준일, 산정 기준, Source_Status를 기록한다.`,
+    "",
+    "## 4. 방법론",
+    "",
+    `현재 실행 중인 분석 방법은 ${method}이다. 앱에서는 탱커 주력과 벌커 주력의 중앙값 비교, Welch t-test 근사, Mann-Whitney U 근사, permutation p-value, 60/70/80% 민감도 분석, verified 표본 강건성 분석을 계산한다. 단, 브라우저 내 통계 검정값은 예비 분석용이며 최종 논문에서는 Python 또는 R로 동일 표본을 재검정한다.`,
+    "",
+    "## 5. 예비 분석 결과",
+    "",
+    ...resultTable,
+    "",
+    "해석 초안:",
+    "",
+    interpretation,
+    "",
+    "## 6. 논의",
+    "",
+    "예비 결과는 주력 선종별 peer group을 분리해야 한다는 연구 설계의 필요성을 보여준다. 특히 EV/Fleet 또는 P/B처럼 자산가치와 연결된 지표는 선대 규모, 소유/용선 구조, 선종 순도에 영향을 받을 수 있다. 따라서 최종 분석에서는 혼합 선대 기업을 별도 표본으로 두고, verified 출처만 사용한 강건성 검정을 함께 제시하는 것이 바람직하다.",
+    "",
+    "## 7. 한계와 추가 작업",
+    "",
+    "- 현재 재무값 일부는 yfinance 공개 시장 스냅샷이므로 감사보고서 확정값이 아니다.",
+    "- 공개 선대 자료는 owned, operated, chartered, pro-forma 기준이 회사별로 다를 수 있다.",
+    "- 정확한 전세계 회사별 선종 수를 완성하려면 Clarksons, Kpler, Lloyd's List Intelligence, S&P/IHS 등 IMO 단위 원장이 필요하다.",
+    "- 운임 사이클 민감도 연구는 BDI, 탱커 운임지수, 주가수익률 등 월별 시계열 CSV가 추가되어야 한다.",
+    "",
+    "## 8. 참고문헌 수집 링크",
+    "",
+    ...searchLinks.map((source) => `- ${source.name}: ${source.url}`),
+  ];
+  return lines.join("\n");
+}
+
+function exportThesisDraft() {
+  showPreview({
+    title: "논문 초안 미리보기",
+    filename: "shipping_valuation_thesis_draft.md",
+    content: buildThesisDraftText(),
+    type: "markdown",
+  });
+}
+
 function exportResearchPack() {
   showPreview({
     title: "논문 패키지 미리보기",
@@ -2624,6 +2725,7 @@ async function init() {
   $("exportCsv").addEventListener("click", exportClassification);
   $("exportFleet").addEventListener("click", exportFleetSummary);
   $("exportBrief").addEventListener("click", exportBrief);
+  $("exportThesisDraft").addEventListener("click", exportThesisDraft);
   $("exportResearchPack").addEventListener("click", exportResearchPack);
   $("previewDownload").addEventListener("click", () => {
     if (!state.preview) return;
