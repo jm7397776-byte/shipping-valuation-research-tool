@@ -7,6 +7,7 @@ const state = {
   researchBlueprint: { topics: [], data_sources: [], workflow: [] },
   activeTopic: "fleet_mix",
   activeWorkflowStep: "valuation",
+  activeAnalysisMethod: "median",
   financeLoadedFrom: "",
   fleetCategory: "All",
   directoryMode: "shipType",
@@ -89,6 +90,39 @@ const WORKFLOW_STEPS = [
     need: "Source_URL, Source_Date, Basis, Source_Status, Notes",
     output: "기본 표본과 강건성 표본 구분",
     action: "Source_Status가 review인 회사는 부록 또는 민감도 분석 표본으로 둡니다.",
+  },
+];
+
+const ANALYSIS_METHODS = [
+  {
+    id: "median",
+    label: "중앙값 비교",
+    text: "탱커 주력과 벌커 주력의 EV/EBITDA, P/B, EV/Fleet 중앙값을 즉시 비교합니다.",
+  },
+  {
+    id: "tests",
+    label: "그룹 차이 검정",
+    text: "Mann-Whitney U와 Welch t-test 근사값으로 탱커·벌커 차이를 검정합니다.",
+  },
+  {
+    id: "sensitivity",
+    label: "60/70/80 민감도",
+    text: "주력 선종 기준을 60%, 70%, 80%로 바꿨을 때 표본과 결과가 어떻게 바뀌는지 봅니다.",
+  },
+  {
+    id: "robustness",
+    label: "강건성 표본",
+    text: "전체 표본, verified 선대 표본, review 제외 표본을 나눠 결과가 유지되는지 확인합니다.",
+  },
+  {
+    id: "asset",
+    label: "선대 규모 효과",
+    text: "Fleet_Total, Owned_Count와 EV/Fleet, P/B의 상관·단순 회귀를 계산합니다.",
+  },
+  {
+    id: "disclosure",
+    label: "공시 품질 비교",
+    text: "verified/review 출처 상태별 결측률과 멀티플 차이를 확인합니다.",
   },
 ];
 
@@ -1246,6 +1280,16 @@ function selectedTopic() {
   return topics.find((topic) => topic.id === state.activeTopic) ?? topics[0] ?? null;
 }
 
+function methodIdForText(text) {
+  const lower = String(text).toLowerCase();
+  if (lower.includes("mann-whitney") || lower.includes("welch") || lower.includes("검정")) return "tests";
+  if (lower.includes("60/70/80") || lower.includes("민감도")) return "sensitivity";
+  if (lower.includes("강건성") || lower.includes("verified") || lower.includes("review")) return "robustness";
+  if (lower.includes("owned") || lower.includes("dwt") || lower.includes("fleet") || lower.includes("소유")) return "asset";
+  if (lower.includes("품질") || lower.includes("누락") || lower.includes("공시")) return "disclosure";
+  return "median";
+}
+
 function researchSearchLinks(topic) {
   const query = topic?.literature_query ?? "shipping company valuation tanker dry bulk";
   const encoded = encodeURIComponent(query);
@@ -1302,6 +1346,29 @@ function correlation(a, b) {
   return xDenom && yDenom ? numerator / (xDenom * yDenom) : null;
 }
 
+function linearRegression(a, b) {
+  const pairs = a
+    .map((value, index) => [value, b[index]])
+    .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+  if (pairs.length < 3) return null;
+  const xs = pairs.map(([x]) => x);
+  const ys = pairs.map(([, y]) => y);
+  const xMean = mean(xs);
+  const yMean = mean(ys);
+  const denom = pairs.reduce((sum, [x]) => sum + (x - xMean) ** 2, 0);
+  if (!denom) return null;
+  const slope = pairs.reduce((sum, [x, y]) => sum + (x - xMean) * (y - yMean), 0) / denom;
+  const intercept = yMean - slope * xMean;
+  const r = correlation(xs, ys);
+  return { slope, intercept, r2: r === null ? null : r ** 2, n: pairs.length };
+}
+
+function groupFromPercentages(tankerPct, bulkPct, tankerThreshold, bulkThreshold, oppositeThreshold) {
+  if (tankerPct >= tankerThreshold && bulkPct <= oppositeThreshold) return "Tanker core";
+  if (bulkPct >= bulkThreshold && tankerPct <= oppositeThreshold) return "Dry bulk core";
+  return "Mixed / review";
+}
+
 function analysisDataset() {
   return buildCompanyDirectory()
     .map((entry) => {
@@ -1317,6 +1384,8 @@ function analysisDataset() {
         tankerPct: fleet?.Total ? (fleet.Tanker / fleet.Total) * 100 : entry.firm?.Tanker_Pct ?? null,
         bulkPct: fleet?.Total ? (fleet["Dry bulk"] / fleet.Total) * 100 : entry.firm?.DryBulk_Pct ?? null,
         sourceStatus: fleet?.Source_Status || "missing",
+        company: entry.Company_Name,
+        ric: entry.RIC,
       };
     })
     .filter((row) => row.valuation.finance);
@@ -1353,6 +1422,80 @@ function permutationPValue(a, b, iterations = 1200) {
   return hits / iterations;
 }
 
+function erf(value) {
+  const sign = value < 0 ? -1 : 1;
+  const x = Math.abs(value);
+  const t = 1 / (1 + 0.3275911 * x);
+  const y =
+    1 -
+    (((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t +
+      0.254829592) *
+      t *
+      Math.exp(-x * x));
+  return sign * y;
+}
+
+function normalCdf(value) {
+  return 0.5 * (1 + erf(value / Math.sqrt(2)));
+}
+
+function welchTest(a, b) {
+  const left = a.filter((value) => Number.isFinite(value));
+  const right = b.filter((value) => Number.isFinite(value));
+  if (left.length < 2 || right.length < 2) return null;
+  const leftMean = mean(left);
+  const rightMean = mean(right);
+  const leftStd = sampleStd(left);
+  const rightStd = sampleStd(right);
+  const se = Math.sqrt((leftStd ** 2) / left.length + (rightStd ** 2) / right.length);
+  if (!se) return null;
+  const t = (leftMean - rightMean) / se;
+  const numerator = ((leftStd ** 2) / left.length + (rightStd ** 2) / right.length) ** 2;
+  const denominator =
+    (leftStd ** 4) / (left.length ** 2 * (left.length - 1)) +
+    (rightStd ** 4) / (right.length ** 2 * (right.length - 1));
+  const df = denominator ? numerator / denominator : null;
+  return {
+    t,
+    df,
+    p: 2 * (1 - normalCdf(Math.abs(t))),
+    leftMean,
+    rightMean,
+    n1: left.length,
+    n2: right.length,
+  };
+}
+
+function mannWhitneyUTest(a, b) {
+  const left = a.filter((value) => Number.isFinite(value));
+  const right = b.filter((value) => Number.isFinite(value));
+  if (left.length < 2 || right.length < 2) return null;
+  const pooled = [
+    ...left.map((value) => ({ value, group: "left" })),
+    ...right.map((value) => ({ value, group: "right" })),
+  ].sort((x, y) => x.value - y.value);
+  let index = 0;
+  while (index < pooled.length) {
+    let end = index + 1;
+    while (end < pooled.length && pooled[end].value === pooled[index].value) end += 1;
+    const rank = (index + 1 + end) / 2;
+    for (let i = index; i < end; i += 1) pooled[i].rank = rank;
+    index = end;
+  }
+  const rankSum = pooled.filter((item) => item.group === "left").reduce((sum, item) => sum + item.rank, 0);
+  const u = rankSum - (left.length * (left.length + 1)) / 2;
+  const meanU = (left.length * right.length) / 2;
+  const sd = Math.sqrt((left.length * right.length * (left.length + right.length + 1)) / 12);
+  const z = sd ? (u - meanU) / sd : null;
+  return {
+    u,
+    z,
+    p: z === null ? null : 2 * (1 - normalCdf(Math.abs(z))),
+    n1: left.length,
+    n2: right.length,
+  };
+}
+
 function renderMetricResult(label, values, formatter = fmtMultiple) {
   const nums = values.filter((value) => Number.isFinite(value));
   return `
@@ -1362,6 +1505,171 @@ function renderMetricResult(label, values, formatter = fmtMultiple) {
       <em>n=${nums.length} · 평균 ${formatter(mean(nums))} · 표준편차 ${formatter(sampleStd(nums))}</em>
     </div>
   `;
+}
+
+function rowsByGroup(rows, group, thresholds = state.thresholds) {
+  return rows.filter((row) => {
+    if (row.group === "Excluded") return false;
+    const derived = groupFromPercentages(
+      row.tankerPct ?? 0,
+      row.bulkPct ?? 0,
+      thresholds.tanker,
+      thresholds.bulk,
+      thresholds.opposite,
+    );
+    return derived === group;
+  });
+}
+
+function metricValues(rows, key) {
+  return rows.map((row) => row.valuation[key]).filter((value) => Number.isFinite(value));
+}
+
+function fmtP(value) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
+  if (value < 0.001) return "<0.001";
+  return fmtNumber(value, 3);
+}
+
+function renderAnalysisTable(headers, rows) {
+  return `
+    <div class="analysis-table-wrap">
+      <table class="analysis-table">
+        <thead>
+          <tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
+        </thead>
+        <tbody>
+          ${rows
+            .map(
+              (row) => `
+                <tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>
+              `,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderMedianComparison(rows) {
+  const tanker = rowsByGroup(rows, "Tanker core");
+  const bulk = rowsByGroup(rows, "Dry bulk core");
+  const metrics = [
+    ["EV/EBITDA", "EV_EBITDA", fmtMultiple],
+    ["P/B", "P_Book", fmtMultiple],
+    ["EV/Revenue", "EV_Revenue", fmtMultiple],
+    ["EV/Fleet", "EV_Fleet", (value) => fmtNumber(value, 1)],
+  ];
+  const tableRows = metrics.map(([label, key, formatter]) => {
+    const tankerMedian = median(metricValues(tanker, key));
+    const bulkMedian = median(metricValues(bulk, key));
+    const diff = Number.isFinite(tankerMedian) && Number.isFinite(bulkMedian) ? tankerMedian - bulkMedian : null;
+    return [
+      label,
+      `${formatter(tankerMedian)} / n=${metricValues(tanker, key).length}`,
+      `${formatter(bulkMedian)} / n=${metricValues(bulk, key).length}`,
+      formatter(diff),
+    ];
+  });
+  return renderAnalysisTable(["지표", "탱커 주력 중앙값", "벌커 주력 중앙값", "차이"], tableRows);
+}
+
+function renderGroupTests(rows) {
+  const tanker = rowsByGroup(rows, "Tanker core");
+  const bulk = rowsByGroup(rows, "Dry bulk core");
+  const metrics = [
+    ["EV/EBITDA", "EV_EBITDA"],
+    ["P/B", "P_Book"],
+    ["EV/Fleet", "EV_Fleet"],
+  ];
+  const tableRows = metrics.map(([label, key]) => {
+    const left = metricValues(tanker, key);
+    const right = metricValues(bulk, key);
+    const welch = welchTest(left, right);
+    const mann = mannWhitneyUTest(left, right);
+    const permutation = permutationPValue(left, right);
+    return [
+      label,
+      `t=${fmtNumber(welch?.t, 2)}, p=${fmtP(welch?.p)}`,
+      `U=${fmtNumber(mann?.u, 1)}, p=${fmtP(mann?.p)}`,
+      `p=${fmtP(permutation)}`,
+    ];
+  });
+  return `
+    ${renderAnalysisTable(["지표", "Welch t-test 근사", "Mann-Whitney U 근사", "Permutation"], tableRows)}
+    <p class="analysis-note">p-value는 브라우저 내 근사 계산입니다. 논문 최종본에서는 Python/R로 동일 표본을 재검정해 수치를 확정하세요.</p>
+  `;
+}
+
+function renderSensitivity(rows) {
+  const tableRows = [60, 70, 80].map((threshold) => {
+    const thresholds = { tanker: threshold, bulk: threshold, opposite: state.thresholds.opposite };
+    const tanker = rowsByGroup(rows, "Tanker core", thresholds);
+    const bulk = rowsByGroup(rows, "Dry bulk core", thresholds);
+    const tankerValues = metricValues(tanker, "EV_EBITDA");
+    const bulkValues = metricValues(bulk, "EV_EBITDA");
+    return [
+      `${threshold}%`,
+      `${tanker.length}개 · ${fmtMultiple(median(tankerValues))}`,
+      `${bulk.length}개 · ${fmtMultiple(median(bulkValues))}`,
+      fmtP(permutationPValue(tankerValues, bulkValues)),
+    ];
+  });
+  return renderAnalysisTable(["주력 기준", "탱커 n · EV/EBITDA", "벌커 n · EV/EBITDA", "차이 p-value"], tableRows);
+}
+
+function renderRobustness(rows) {
+  const samples = [
+    ["전체 재무 입력", rows],
+    ["선대 verified만", rows.filter((row) => row.sourceStatus === "verified")],
+    ["review/missing 제외", rows.filter((row) => row.sourceStatus === "verified")],
+    ["탱커·벌커 core만", rows.filter((row) => ["Tanker core", "Dry bulk core"].includes(row.group))],
+  ];
+  const tableRows = samples.map(([label, sample]) => {
+    const tanker = rowsByGroup(sample, "Tanker core");
+    const bulk = rowsByGroup(sample, "Dry bulk core");
+    return [
+      label,
+      `${sample.length}개`,
+      `${tanker.length}개 · ${fmtMultiple(median(metricValues(tanker, "EV_EBITDA")))}`,
+      `${bulk.length}개 · ${fmtMultiple(median(metricValues(bulk, "EV_EBITDA")))}`,
+    ];
+  });
+  return renderAnalysisTable(["표본", "계산 가능", "탱커 EV/EBITDA", "벌커 EV/EBITDA"], tableRows);
+}
+
+function renderAssetEffect(rows) {
+  const fleet = rows.map((row) => row.fleetTotal);
+  const owned = rows.map((row) => row.owned);
+  const evFleet = rows.map((row) => row.valuation.EV_Fleet);
+  const pBook = rows.map((row) => row.valuation.P_Book);
+  const regression = linearRegression(fleet, evFleet);
+  const tableRows = [
+    ["Fleet_Total vs EV/Fleet", fmtNumber(correlation(fleet, evFleet), 2), fmtNumber(regression?.slope, 2), `${regression?.n ?? 0}개`],
+    ["Owned_Count vs P/B", fmtNumber(correlation(owned, pBook), 2), "-", `${owned.filter(Number.isFinite).length}개`],
+    ["Fleet_Total vs P/B", fmtNumber(correlation(fleet, pBook), 2), "-", `${fleet.filter(Number.isFinite).length}개`],
+  ];
+  return renderAnalysisTable(["관계", "상관계수", "단순회귀 기울기", "표본"], tableRows);
+}
+
+function renderDisclosureQuality(rows) {
+  const verified = rows.filter((row) => row.sourceStatus === "verified");
+  const review = rows.filter((row) => row.sourceStatus !== "verified");
+  const tableRows = [
+    ["verified", `${verified.length}개`, fmtMultiple(median(metricValues(verified, "EV_EBITDA"))), fmtNumber(median(metricValues(verified, "EV_Fleet")), 1)],
+    ["review/missing", `${review.length}개`, fmtMultiple(median(metricValues(review, "EV_EBITDA"))), fmtNumber(median(metricValues(review, "EV_Fleet")), 1)],
+  ];
+  return renderAnalysisTable(["출처 상태", "표본", "EV/EBITDA 중앙값", "EV/Fleet 중앙값"], tableRows);
+}
+
+function renderSelectedMethod(rows) {
+  if (state.activeAnalysisMethod === "tests") return renderGroupTests(rows);
+  if (state.activeAnalysisMethod === "sensitivity") return renderSensitivity(rows);
+  if (state.activeAnalysisMethod === "robustness") return renderRobustness(rows);
+  if (state.activeAnalysisMethod === "asset") return renderAssetEffect(rows);
+  if (state.activeAnalysisMethod === "disclosure") return renderDisclosureQuality(rows);
+  return renderMedianComparison(rows);
 }
 
 function renderActualAnalysis(topic) {
@@ -1400,6 +1708,19 @@ function renderActualAnalysis(topic) {
     <div class="analysis-result-head">
       <h3>실제 분석 결과</h3>
       <span>${escapeHtml(headline)}</span>
+    </div>
+    <div class="analysis-method-tabs">
+      ${ANALYSIS_METHODS.map(
+        (method) => `
+          <button type="button" class="${method.id === state.activeAnalysisMethod ? "active" : ""}" data-analysis-method="${escapeHtml(method.id)}">
+            <strong>${escapeHtml(method.label)}</strong>
+            <span>${escapeHtml(method.text)}</span>
+          </button>
+        `,
+      ).join("")}
+    </div>
+    <div class="analysis-execution">
+      ${renderSelectedMethod(rows)}
     </div>
     <div class="analysis-result-grid">
       ${renderMetricResult("탱커 EV/EBITDA", tanker.map((row) => row.valuation.EV_EBITDA))}
@@ -1498,10 +1819,24 @@ function renderThesisAssistant() {
     ...(topic.methods ?? []),
     ...(blueprint.workflow ?? []).slice(0, 3),
   ]
-    .map((text) => `<div class="method-item">${escapeHtml(text)}</div>`)
+    .map((text) => {
+      const methodId = methodIdForText(text);
+      return `
+        <button type="button" class="method-item method-action ${methodId === state.activeAnalysisMethod ? "active" : ""}" data-analysis-method="${escapeHtml(methodId)}">
+          ${escapeHtml(text)}
+        </button>
+      `;
+    })
     .join("");
 
   $("actualAnalysis").innerHTML = renderActualAnalysis(topic);
+  document.querySelectorAll("[data-analysis-method]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeAnalysisMethod = button.dataset.analysisMethod;
+      renderThesisAssistant();
+      $("actualAnalysis")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  });
 
   const literature = researchSearchLinks(topic)
     .map(
