@@ -17,6 +17,7 @@ python3 -m http.server 4173
 - `data/valuation_inputs_template.csv`: 가치평가 입력 템플릿
 - `data/listed_fleet_counts.json`: 공식 공개자료로 확인한 상장 해운사 선대 수
 - `data/open_source_tools.json`: 가치평가·공시 수집에 쓸 오픈소스/GitHub 도구 목록
+- `data/research_blueprint.json`: 논문 주제, 가설, 변수, 방법론, 공개 데이터 출처 목록
 
 ## 분류 기준
 
@@ -102,6 +103,19 @@ python3 -m http.server 4173
 - 미리보기 하단의 `다운로드`를 눌렀을 때만 파일로 저장됩니다.
 - 회사별 판정표의 `자료실` 버튼은 시장가격, SEC 공시, 선대 공식자료, IR 검색 링크를 보여줍니다.
 - `기업가치평가 데이터룸`에는 OpenBB, EdgarTools, sec-edgar-downloader, yfinance, Arelle 등 연구 자동화에 쓸 오픈소스 도구 링크가 들어 있습니다.
+- `논문 작성 도우미`는 데이터 완성도, 추천 연구 주제, 가설, 종속·설명변수, 분석 방법, OpenAlex/Crossref/Semantic Scholar 문헌검색 링크를 보여줍니다.
+- 상단 `논문 패키지` 버튼은 현재 표본 상태, 데이터 한계, 선택한 연구 주제, 가설, 방법론, 공개 데이터·오픈소스 링크를 마크다운으로 미리 보여줍니다.
+
+## 논문에 바로 쓸 때의 기준
+
+현재 앱은 논문 기획과 표본 구축에 필요한 뼈대를 제공합니다. 다만 무료 공개자료만으로 전세계 모든 상장 해운사의 회사별 정확한 선종 수가 완성됐다고 단정하면 안 됩니다.
+
+논문 본문에는 다음처럼 쓰는 편이 안전합니다.
+
+- 기본 분석: `Source_Status = verified`인 회사와 재무 입력이 있는 회사
+- 보조 분석: `Source_Status = review`까지 포함한 확장 표본
+- 한계: 공개자료 기반 선대 수는 회사별 산정 기준이 owned, operated, chartered, pool, pro-forma로 다를 수 있음
+- 개선 방향: Clarksons, Kpler, Lloyd's List Intelligence, S&P/IHS 등 IMO 단위 원장 확보 후 재현
 
 ## 공유
 

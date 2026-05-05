@@ -26,6 +26,7 @@
         <button id="exportCsv" type="button">분류 CSV</button>
         <button id="exportFleet" type="button">선대 요약</button>
         <button id="exportBrief" type="button">연구 노트</button>
+        <button id="exportResearchPack" type="button">논문 패키지</button>
       </div>
     </header>
 
@@ -86,6 +87,7 @@
               <li>전세계 선대 원장은 선대 템플릿 형식으로 불러옵니다.</li>
               <li>입력 템플릿에 재무값을 채운 뒤 CSV로 불러옵니다.</li>
               <li>상단 버튼은 먼저 미리보기를 열고, 필요할 때만 내려받습니다.</li>
+              <li>논문 작성 도우미에서 가설, 변수, 방법론, 문헌검색 링크를 확인합니다.</li>
             </ol>
           </details>
         </aside>
@@ -132,6 +134,26 @@
               <div>
                 <h3>오픈소스·깃허브 도구</h3>
                 <div id="openSourceTools" class="tool-list"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel thesis-panel">
+            <div class="panel-title">
+              <h2>논문 작성 도우미</h2>
+              <span id="thesisSummary">데이터 완성도와 연구 설계를 함께 점검합니다</span>
+            </div>
+            <div id="qualityGrid" class="quality-grid"></div>
+            <div id="topicTabs" class="topic-tabs"></div>
+            <div class="thesis-grid">
+              <div id="topicDetail" class="topic-detail"></div>
+              <div>
+                <h3>분석 방법</h3>
+                <div id="methodList" class="method-list"></div>
+              </div>
+              <div>
+                <h3>공개 데이터·문헌 출처</h3>
+                <div id="sourceStack" class="source-stack"></div>
               </div>
             </div>
           </section>

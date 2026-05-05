@@ -1,0 +1,138 @@
+{
+  "topics": [
+    {
+      "id": "fleet_mix",
+      "title": "주력 선종과 밸류에이션 차이",
+      "question": "탱커 주력 상장사와 벌커 주력 상장사는 EV/EBITDA, P/B, EV/DWT에서 구조적으로 다른 밸류에이션을 받는가?",
+      "hypotheses": [
+        "H1: 탱커 주력사는 벌커 주력사와 다른 EV/EBITDA 중앙값을 보인다.",
+        "H2: 선대 순도(Tanker_Pct 또는 DryBulk_Pct)가 높을수록 비교기업 멀티플 분산이 줄어든다.",
+        "H3: 혼합 선대 기업을 제외하면 선종별 밸류에이션 차이가 더 선명해진다."
+      ],
+      "dependent_variables": ["EV/EBITDA", "P/B", "EV/DWT", "EV/Fleet"],
+      "explanatory_variables": ["Tanker_Pct", "DryBulk_Pct", "Fleet_Total", "DWT_Total", "Owned_Count"],
+      "methods": [
+        "탱커 주력 vs 벌커 주력 중앙값 비교",
+        "Mann-Whitney U 또는 Welch t-test로 그룹 차이 검정",
+        "선종 기준 60/70/80% 민감도 분석",
+        "혼합·제외 기업을 강건성 표본으로 분리"
+      ],
+      "literature_query": "shipping company valuation tanker dry bulk fleet composition EV EBITDA"
+    },
+    {
+      "id": "cycle_sensitivity",
+      "title": "운임 사이클 민감도",
+      "question": "탱커와 벌커 기업의 시장가치는 서로 다른 운임·톤마일 지표에 더 민감하게 반응하는가?",
+      "hypotheses": [
+        "H1: 벌커 주력사는 BDI와 철광석·석탄 물동량 변수에 더 민감하다.",
+        "H2: 탱커 주력사는 원유·제품선 운임, 정제마진, 지정학적 톤마일 충격에 더 민감하다.",
+        "H3: 운임 상승기에는 EV/EBITDA보다 P/B가 자산가치 재평가를 더 빠르게 반영한다."
+      ],
+      "dependent_variables": ["주가 수익률", "EV/EBITDA 변화", "P/B 변화"],
+      "explanatory_variables": ["BDI", "Baltic tanker index", "Brent", "Ton-mile proxy", "China import proxy"],
+      "methods": [
+        "월별 패널 회귀",
+        "선종 더미와 운임지표 상호작용항",
+        "상승기·하락기 구간 분할",
+        "환율과 시장지수 수익률 통제"
+      ],
+      "literature_query": "dry bulk tanker freight rate cycle stock valuation shipping"
+    },
+    {
+      "id": "asset_quality",
+      "title": "선대 규모·소유구조 프리미엄",
+      "question": "선박 보유 수, DWT, owned/chartered 비중은 해운사 밸류에이션 프리미엄 또는 할인율을 설명하는가?",
+      "hypotheses": [
+        "H1: owned fleet 비중이 높을수록 P/B와 EV/DWT가 자산가치에 더 가깝게 움직인다.",
+        "H2: 장기용선·단기용선 비중이 큰 회사는 운임 사이클에서 이익 탄력성이 다르게 나타난다.",
+        "H3: 선대 수 기준과 운항선대 기준을 섞으면 밸류에이션 회귀의 오차가 커진다."
+      ],
+      "dependent_variables": ["P/B", "EV/DWT", "EV/Fleet"],
+      "explanatory_variables": ["Owned_Count", "Chartered_Count", "Fleet_Total", "DWT_Total", "Fleet_Basis"],
+      "methods": [
+        "owned-only와 operated fleet 기준을 분리한 회귀",
+        "Source_Status가 verified인 표본만 따로 분석",
+        "DWT 기준과 척수 기준 결과 비교",
+        "대형사 winsorization 또는 로그 변환"
+      ],
+      "literature_query": "shipping fleet ownership chartered vessels valuation P/B DWT"
+    },
+    {
+      "id": "disclosure_quality",
+      "title": "공시 품질과 연구 표본 신뢰도",
+      "question": "공식 선대 수와 재무 공시의 완성도 차이가 상장 해운사 가치평가 연구 결과에 어떤 편향을 만드는가?",
+      "hypotheses": [
+        "H1: 출처 검증 상태가 낮은 회사는 멀티플 비교에서 측정오차가 커진다.",
+        "H2: 미국 상장사와 비미국 상장사는 XBRL·연차보고서 접근성이 다르다.",
+        "H3: paid fleet registry 없이 공개자료만 쓰는 경우 연구 결론은 표본 범위 제한을 명시해야 한다."
+      ],
+      "dependent_variables": ["자료 완성도 점수", "멀티플 결측률", "선대 수 검증 상태"],
+      "explanatory_variables": ["Source_Status", "SEC availability", "Annual report URL", "Fleet basis"],
+      "methods": [
+        "데이터 품질표와 누락률 제시",
+        "verified 표본과 review 표본 결과 비교",
+        "공개자료 한계와 유료 원장 필요성 명시",
+        "재현 가능한 출처 URL·기준일 부록 작성"
+      ],
+      "literature_query": "financial statement disclosure data quality shipping firm valuation research"
+    }
+  ],
+  "data_sources": [
+    {
+      "name": "SEC EDGAR APIs",
+      "stage": "미국 상장사 공시·XBRL",
+      "fit": "20-F, 10-K, 10-Q, 6-K, companyfacts를 구조화해 EV, EBITDA, 부채, 현금 입력값을 검증",
+      "url": "https://www.sec.gov/search-filings/edgar-application-programming-interfaces"
+    },
+    {
+      "name": "OpenAlex",
+      "stage": "논문·문헌검색",
+      "fit": "해운 밸류에이션, 운임 사이클, 선대 구조 관련 선행연구 검색",
+      "url": "https://developers.openalex.org/api-reference/introduction"
+    },
+    {
+      "name": "Crossref REST API",
+      "stage": "DOI·참고문헌 메타데이터",
+      "fit": "논문 제목, DOI, 학술지, 초록, 인용 후보를 JSON으로 수집",
+      "url": "https://www.production.crossref.org/documentation/retrieve-metadata/rest-api/"
+    },
+    {
+      "name": "Semantic Scholar API",
+      "stage": "인용 네트워크·추천 논문",
+      "fit": "핵심 논문과 유사 논문, 인용·피인용 관계를 추적",
+      "url": "https://www.semanticscholar.org/product/api"
+    },
+    {
+      "name": "Equasis",
+      "stage": "선박·회사 확인",
+      "fit": "무료 등록 후 IMO·회사 검색으로 선박별 관리·소유 정보를 수동 검증",
+      "url": "https://www.equasis.org/EquasisWeb/Static/MOA/Help/Help.html"
+    },
+    {
+      "name": "EU THETIS-MRV",
+      "stage": "선박별 EU 배출량",
+      "fit": "EU/EEA 기항 선박의 CO2·효율성 변수를 ESG 또는 규제 프리미엄 분석에 연결",
+      "url": "https://mrv.emsa.europa.eu/#public/emission-report"
+    },
+    {
+      "name": "OECD Maritime CO2",
+      "stage": "국가·선종별 배출량",
+      "fit": "AIS 기반 월별 해운 CO2 지표를 거시 통제변수로 활용",
+      "url": "https://www.oecd.org/en/data/datasets/maritime-transport-co2-emissions.html"
+    },
+    {
+      "name": "UNCTADstat Merchant Fleet",
+      "stage": "세계 선대 거시자료",
+      "fit": "국가·선종별 세계 선대 흐름을 배경 설명과 시장 구조 자료로 활용",
+      "url": "https://unctadstat.unctad.org/insights/theme/25"
+    }
+  ],
+  "workflow": [
+    "연구 질문을 하나 선택하고 탱커·벌커 구분 기준을 고정한다.",
+    "Source_Status가 verified인 선대 자료와 재무 입력값으로 기본 표본을 만든다.",
+    "review 상태의 회사는 부록 표본으로 두고 결과가 바뀌는지 강건성 검정을 한다.",
+    "공식 보고서 URL, 기준일, owned/operated/pro-forma 산정 기준을 변수 사전에 기록한다.",
+    "OpenAlex·Crossref·Semantic Scholar로 선행연구를 수집하고 Zotero 또는 Quarto로 참고문헌을 관리한다.",
+    "결과표에는 중앙값, 표본 수, 결측률, 검정 통계량, 데이터 한계를 같이 제시한다."
+  ]
+}

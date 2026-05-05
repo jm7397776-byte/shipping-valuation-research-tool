@@ -4,6 +4,8 @@ const state = {
   fleetRecords: [],
   officialFleet: [],
   openSourceTools: [],
+  researchBlueprint: { topics: [], data_sources: [], workflow: [] },
+  activeTopic: "fleet_mix",
   fleetCategory: "All",
   preview: null,
   thresholds: {
@@ -653,6 +655,7 @@ function render() {
   renderKpis(rows);
   renderValuation(rows);
   renderFleetSummary();
+  renderThesisAssistant();
   renderTable(rows);
   drawComposition(rows);
   drawScatter(rows);
@@ -876,6 +879,243 @@ function renderResearchTools() {
     .join("");
 }
 
+function dataQualityMetrics() {
+  const all = state.firms.map(attachComputed);
+  const fleetSummary = buildFleetSummary();
+  const fleetRics = new Set(fleetSummary.map((row) => row.RIC).filter(Boolean));
+  const verified = fleetSummary.filter((row) => row.Source_Status === "verified").length;
+  const review = fleetSummary.filter((row) => row.Source_Status && row.Source_Status !== "verified").length;
+  const sampleFleetCoverage = all.filter((row) => fleetRics.has(row.RIC)).length;
+  const financeCoverage = all.filter((row) => row.Finance).length;
+  const vesselCount = fleetSummary.reduce((sum, row) => sum + row.Total, 0);
+  return {
+    all,
+    fleetSummary,
+    verified,
+    review,
+    sampleFleetCoverage,
+    financeCoverage,
+    vesselCount,
+    sourceMode: state.fleetRecords.length ? "업로드 원장" : "공식 공개자료",
+  };
+}
+
+function selectedTopic() {
+  const topics = state.researchBlueprint.topics ?? [];
+  return topics.find((topic) => topic.id === state.activeTopic) ?? topics[0] ?? null;
+}
+
+function researchSearchLinks(topic) {
+  const query = topic?.literature_query ?? "shipping company valuation tanker dry bulk";
+  const encoded = encodeURIComponent(query);
+  return [
+    {
+      name: "OpenAlex",
+      text: "API 문헌검색",
+      url: `https://api.openalex.org/works?search=${encoded}&per-page=25`,
+    },
+    {
+      name: "Crossref",
+      text: "DOI·초록 검색",
+      url: `https://api.crossref.org/works?query=${encoded}&rows=25`,
+    },
+    {
+      name: "Semantic Scholar",
+      text: "인용 네트워크 검색",
+      url: `https://www.semanticscholar.org/search?q=${encoded}&sort=relevance`,
+    },
+    {
+      name: "Google Scholar",
+      text: "수동 확인",
+      url: `https://scholar.google.com/scholar?q=${encoded}`,
+    },
+  ];
+}
+
+function renderThesisAssistant() {
+  const blueprint = state.researchBlueprint;
+  const topics = blueprint.topics ?? [];
+  const topic = selectedTopic();
+  const quality = dataQualityMetrics();
+  if (!topic) {
+    $("thesisSummary").textContent = "연구 설계 데이터를 불러오지 못했습니다";
+    return;
+  }
+
+  $("thesisSummary").textContent =
+    `${quality.sourceMode} 선대 ${fmtNumber(quality.vesselCount)}척 · 검증 ${quality.verified}개 · 검토 ${quality.review}개`;
+
+  $("qualityGrid").innerHTML = [
+    ["선대 수", `${fmtNumber(quality.vesselCount)}척`, `${quality.fleetSummary.length}개 상장사 공개자료`],
+    [
+      "표본 커버리지",
+      `${quality.sampleFleetCoverage}/${state.firms.length}`,
+      "기본 55개 표본 중 공식 선대 수 연결",
+    ],
+    ["재무 입력", `${quality.financeCoverage}/${state.firms.length}`, "CSV 입력 후 멀티플 자동 계산"],
+    ["검증 상태", `${quality.verified} verified`, `${quality.review} review · 출처 재확인 필요`],
+  ]
+    .map(
+      ([label, value, text]) => `
+        <div class="quality-item">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+          <em>${escapeHtml(text)}</em>
+        </div>
+      `,
+    )
+    .join("");
+
+  $("topicTabs").innerHTML = topics
+    .map(
+      (item) => `
+        <button type="button" class="${item.id === topic.id ? "active" : ""}" data-topic="${escapeHtml(item.id)}">
+          ${escapeHtml(item.title)}
+        </button>
+      `,
+    )
+    .join("");
+  document.querySelectorAll("[data-topic]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeTopic = button.dataset.topic;
+      renderThesisAssistant();
+    });
+  });
+
+  $("topicDetail").innerHTML = `
+    <h3>${escapeHtml(topic.title)}</h3>
+    <p>${escapeHtml(topic.question)}</p>
+    <div class="hypothesis-list">
+      ${(topic.hypotheses ?? [])
+        .map((text) => `<span>${escapeHtml(text)}</span>`)
+        .join("")}
+    </div>
+    <div class="variable-row">
+      <div>
+        <strong>종속변수</strong>
+        <span>${escapeHtml((topic.dependent_variables ?? []).join(", "))}</span>
+      </div>
+      <div>
+        <strong>설명변수</strong>
+        <span>${escapeHtml((topic.explanatory_variables ?? []).join(", "))}</span>
+      </div>
+    </div>
+  `;
+
+  $("methodList").innerHTML = [
+    ...(topic.methods ?? []),
+    ...(blueprint.workflow ?? []).slice(0, 3),
+  ]
+    .map((text) => `<div class="method-item">${escapeHtml(text)}</div>`)
+    .join("");
+
+  const literature = researchSearchLinks(topic)
+    .map(
+      (source) => `
+        <a class="source-link" href="${escapeHtml(source.url)}" target="_blank" rel="noopener">
+          <strong>${escapeHtml(source.name)}</strong>
+          <span>${escapeHtml(source.text)}</span>
+        </a>
+      `,
+    )
+    .join("");
+  const sources = (blueprint.data_sources ?? [])
+    .slice(0, 8)
+    .map(
+      (source) => `
+        <a class="source-link" href="${escapeHtml(source.url)}" target="_blank" rel="noopener">
+          <strong>${escapeHtml(source.name)}</strong>
+          <span>${escapeHtml(source.stage)} · ${escapeHtml(source.fit)}</span>
+        </a>
+      `,
+    )
+    .join("");
+  $("sourceStack").innerHTML = literature + sources;
+}
+
+function buildResearchPackText() {
+  const quality = dataQualityMetrics();
+  const topic = selectedTopic();
+  const counts = groupCounts(quality.all);
+  const searchLinks = researchSearchLinks(topic);
+  const lines = [
+    "# 해운사 선종 구분 및 기업가치평가 논문 패키지",
+    "",
+    "## 현재 앱에 들어있는 것",
+    "",
+    "- 탱커·벌커 주력 회사 구분 로직",
+    "- 공식 공개자료 기반 상장 해운사 선대 수와 출처 URL",
+    "- 선종 카테고리별 회사 목록과 선종별 척수 집계",
+    "- 가치평가 입력 템플릿과 EV/EBITDA, P/B, EV/DWT, EV/Fleet 계산",
+    "- 회사별 공시·IR·시장가격 자료실",
+    "- 오픈소스·GitHub 기반 공시, 문헌, 참고문헌, 재현문서 도구 목록",
+    "",
+    "## 아직 완성 데이터가 아닌 부분",
+    "",
+    "- 공개자료만으로 전세계 모든 상장 해운사의 정확한 회사별 선종 수를 완결했다고 단정하면 안 됩니다.",
+    "- Source_Status가 review인 행은 공식 보고서 원문 또는 회사 IR에서 재확인이 필요합니다.",
+    "- Clarksons, Kpler, Lloyd's List Intelligence, S&P/IHS 같은 IMO 단위 유료 원장을 받으면 선대 원장 업로드로 재계산해야 합니다.",
+    "",
+    "## 표본 상태",
+    "",
+    `- 전체 표본: ${state.firms.length}`,
+    `- 탱커 주력: ${counts["Tanker core"]}`,
+    `- 벌커 주력: ${counts["Dry bulk core"]}`,
+    `- 혼합·검토: ${counts["Mixed / review"]}`,
+    `- 제외: ${counts.Excluded}`,
+    `- 선대 자료: ${quality.sourceMode} ${quality.vesselCount}척 / ${quality.fleetSummary.length}개 회사`,
+    `- verified 선대 출처: ${quality.verified}개 회사`,
+    `- review 선대 출처: ${quality.review}개 회사`,
+    `- 재무 입력: ${quality.financeCoverage}/${state.firms.length}`,
+    "",
+    "## 추천 연구 주제",
+    "",
+    `- 제목: ${topic?.title ?? ""}`,
+    `- 질문: ${topic?.question ?? ""}`,
+    "",
+    "## 가설",
+    "",
+    ...((topic?.hypotheses ?? []).map((text) => `- ${text}`)),
+    "",
+    "## 변수",
+    "",
+    `- 종속변수: ${(topic?.dependent_variables ?? []).join(", ")}`,
+    `- 설명변수: ${(topic?.explanatory_variables ?? []).join(", ")}`,
+    "",
+    "## 분석 방법",
+    "",
+    ...((topic?.methods ?? []).map((text) => `- ${text}`)),
+    "",
+    "## 연구 워크플로우",
+    "",
+    ...((state.researchBlueprint.workflow ?? []).map((text) => `- ${text}`)),
+    "",
+    "## 문헌검색 링크",
+    "",
+    ...searchLinks.map((source) => `- ${source.name}: ${source.url}`),
+    "",
+    "## 공개 데이터·도구",
+    "",
+    ...((state.researchBlueprint.data_sources ?? []).map(
+      (source) => `- ${source.name}: ${source.stage} / ${source.url}`,
+    )),
+    "",
+    "## 오픈소스·GitHub",
+    "",
+    ...state.openSourceTools.map((tool) => `- ${tool.name}: ${tool.stage} / ${tool.url}`),
+  ];
+  return lines.join("\n");
+}
+
+function exportResearchPack() {
+  showPreview({
+    title: "논문 패키지 미리보기",
+    filename: "shipping_thesis_research_pack.md",
+    content: buildResearchPackText(),
+    type: "markdown",
+  });
+}
+
 function showPreview(payload) {
   state.preview = payload;
   $("previewTitle").textContent = payload.title;
@@ -1062,14 +1302,17 @@ async function handleFile(event) {
 }
 
 async function init() {
-  const [firmsResponse, fleetResponse, toolsResponse] = await Promise.all([
+  const [firmsResponse, fleetResponse, toolsResponse, blueprintResponse] = await Promise.all([
     fetch("./data/firms.json", { cache: "no-store" }),
     fetch("./data/listed_fleet_counts.json", { cache: "no-store" }),
     fetch("./data/open_source_tools.json", { cache: "no-store" }),
+    fetch("./data/research_blueprint.json", { cache: "no-store" }),
   ]);
   state.firms = (await firmsResponse.json()).map(normalizeFirm);
   state.officialFleet = (await fleetResponse.json()).map(normalizeFleetSummaryRow).filter(Boolean);
   state.openSourceTools = await toolsResponse.json();
+  state.researchBlueprint = await blueprintResponse.json();
+  state.activeTopic = state.researchBlueprint.topics?.[0]?.id ?? state.activeTopic;
   $("searchInput").addEventListener("input", (event) => {
     state.search = event.target.value;
     render();
@@ -1104,6 +1347,7 @@ async function init() {
   $("exportCsv").addEventListener("click", exportClassification);
   $("exportFleet").addEventListener("click", exportFleetSummary);
   $("exportBrief").addEventListener("click", exportBrief);
+  $("exportResearchPack").addEventListener("click", exportResearchPack);
   $("previewDownload").addEventListener("click", () => {
     if (!state.preview) return;
     const mime = state.preview.type === "markdown" ? "text/markdown" : "text/csv";
