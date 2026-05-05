@@ -6,6 +6,8 @@ const state = {
   openSourceTools: [],
   researchBlueprint: { topics: [], data_sources: [], workflow: [] },
   activeTopic: "fleet_mix",
+  activeWorkflowStep: "valuation",
+  financeLoadedFrom: "",
   fleetCategory: "All",
   directoryMode: "shipType",
   activeShipType: "All",
@@ -45,6 +47,49 @@ const FLEET_CATEGORIES = [
   ["Offshore", "오프쇼어"],
   ["Passenger", "여객선"],
   ["Other", "기타"],
+];
+
+const WORKFLOW_STEPS = [
+  {
+    id: "fleet",
+    label: "선대",
+    text: "공식 fleet 페이지, 연차보고서, SEC filing 또는 IMO 원장으로 회사별 선종·척수·기준일을 확정합니다.",
+    need: "Company_Name, RIC, Total, 선종별 척수, owned/chartered 기준, Source_URL",
+    output: "선종 분류표, 회사별 선대 요약, Source_Status",
+    action: "왼쪽 선종 분류에서 회사를 고르고, 회사 대시보드의 선대·공시 출처를 확인합니다.",
+  },
+  {
+    id: "financials",
+    label: "재무제표",
+    text: "연차보고서, 20-F/10-K, 감사보고서에서 매출, EBITDA, 부채, 현금, 장부자본을 모읍니다.",
+    need: "Revenue, EBITDA, Total_Debt, Cash, Book_Equity, Fiscal_Year, Currency",
+    output: "가치평가 입력 CSV 또는 내장 재무 스냅샷",
+    action: "내장 yfinance 스냅샷을 먼저 보고, 논문용 확정값은 감사보고서 원문으로 덮어씁니다.",
+  },
+  {
+    id: "market",
+    label: "시장가",
+    text: "시가총액, 기업가치, 주가, 발행주식수, 환율을 같은 기준일로 맞춰 EV를 계산합니다.",
+    need: "Market_Cap, Enterprise_Value, shares outstanding, FX date",
+    output: "EV, P/B, EV/Revenue",
+    action: "회사별 자료실의 시장가격 링크를 열어 현재 시장값과 기준일을 확인합니다.",
+  },
+  {
+    id: "valuation",
+    label: "밸류에이션",
+    text: "선종별 peer group에서 EV/EBITDA, P/B, EV/DWT, EV/Fleet을 즉시 계산해 비교합니다.",
+    need: "재무 입력값 + 선대 수 + DWT 또는 Fleet_Total",
+    output: "탱커·벌커·기타 선종별 멀티플 중앙값과 표본 수",
+    action: "아래 실제 분석 결과에서 선택 연구 주제의 계산값을 바로 확인합니다.",
+  },
+  {
+    id: "verification",
+    label: "검증",
+    text: "출처 URL, 기준일, 산정 기준, verified/review 상태를 기록해 논문 표본 신뢰도를 분리합니다.",
+    need: "Source_URL, Source_Date, Basis, Source_Status, Notes",
+    output: "기본 표본과 강건성 표본 구분",
+    action: "Source_Status가 review인 회사는 부록 또는 민감도 분석 표본으로 둡니다.",
+  },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -251,22 +296,7 @@ function classify(firm) {
 function attachComputed(firm) {
   const decision = classify(firm);
   const finance = state.finance.get(firm.RIC) ?? null;
-  const ev =
-    finance?.Enterprise_Value ??
-    (finance &&
-    finance.Market_Cap !== null &&
-    finance.Total_Debt !== null &&
-    finance.Cash !== null
-      ? finance.Market_Cap + finance.Total_Debt - finance.Cash
-      : null);
-  const evToEbitda = ev !== null && finance?.EBITDA > 0 ? ev / finance.EBITDA : null;
-  const evToRevenue = ev !== null && finance?.Revenue > 0 ? ev / finance.Revenue : null;
-  const pToBook =
-    finance && finance.Market_Cap !== null && finance.Book_Equity > 0
-      ? finance.Market_Cap / finance.Book_Equity
-      : null;
-  const evToDwt = ev !== null && finance?.DWT_Total > 0 ? ev / finance.DWT_Total : null;
-  const evToFleet = ev !== null && finance?.Fleet_Total > 0 ? ev / finance.Fleet_Total : null;
+  const valuation = computeValuation(finance, null);
 
   return {
     ...firm,
@@ -274,17 +304,66 @@ function attachComputed(firm) {
     Decision_Label: GROUP_LABEL[decision.group],
     Decision_Reason: decision.reason,
     Finance: finance,
-    EV: ev,
-    EV_EBITDA: evToEbitda,
-    EV_Revenue: evToRevenue,
-    P_Book: pToBook,
-    EV_DWT: evToDwt,
-    EV_Fleet: evToFleet,
+    EV: valuation.EV,
+    EV_EBITDA: valuation.EV_EBITDA,
+    EV_Revenue: valuation.EV_Revenue,
+    P_Book: valuation.P_Book,
+    EV_DWT: valuation.EV_DWT,
+    EV_Fleet: valuation.EV_Fleet,
   };
 }
 
 function companyKey(item) {
   return item?.RIC || item?.Company_Name || "";
+}
+
+function computeValuation(finance, fleet) {
+  if (!finance) {
+    return {
+      finance: null,
+      EV: null,
+      EV_EBITDA: null,
+      EV_Revenue: null,
+      P_Book: null,
+      EV_DWT: null,
+      EV_Fleet: null,
+    };
+  }
+
+  const ev =
+    finance.Enterprise_Value ??
+    (finance.Market_Cap !== null && finance.Total_Debt !== null && finance.Cash !== null
+      ? finance.Market_Cap + finance.Total_Debt - finance.Cash
+      : null);
+  const fleetTotal = finance.Fleet_Total ?? fleet?.Total ?? null;
+  return {
+    finance,
+    EV: ev,
+    EV_EBITDA: ev !== null && finance.EBITDA > 0 ? ev / finance.EBITDA : null,
+    EV_Revenue: ev !== null && finance.Revenue > 0 ? ev / finance.Revenue : null,
+    P_Book:
+      finance.Market_Cap !== null && finance.Book_Equity > 0
+        ? finance.Market_Cap / finance.Book_Equity
+        : null,
+    EV_DWT: ev !== null && finance.DWT_Total > 0 ? ev / finance.DWT_Total : null,
+    EV_Fleet: ev !== null && fleetTotal > 0 ? ev / fleetTotal : null,
+  };
+}
+
+function valuationForEntry(entry) {
+  const finance = entry?.finance ?? entry?.firm?.Finance ?? state.finance.get(entry?.RIC) ?? null;
+  return computeValuation(finance, entry?.fleet ?? null);
+}
+
+function groupForEntry(entry) {
+  if (entry?.firm?.Decision_Group) return entry.firm.Decision_Group;
+  const fleet = entry?.fleet;
+  if (!fleet?.Total) return "Mixed / review";
+  const tankerPct = (fleet.Tanker / fleet.Total) * 100;
+  const bulkPct = (fleet["Dry bulk"] / fleet.Total) * 100;
+  if (tankerPct >= state.thresholds.tanker && bulkPct <= state.thresholds.opposite) return "Tanker core";
+  if (bulkPct >= state.thresholds.bulk && tankerPct <= state.thresholds.opposite) return "Dry bulk core";
+  return "Mixed / review";
 }
 
 function buildCompanyDirectory() {
@@ -299,6 +378,7 @@ function buildCompanyDirectory() {
       RIC: firm.RIC,
       firm,
       fleet: null,
+      finance: firm.Finance,
     });
   });
 
@@ -306,12 +386,14 @@ function buildCompanyDirectory() {
     const key = companyKey(fleet);
     if (!key) return;
     const existing = directory.get(key);
+    const finance = existing?.finance ?? state.finance.get(fleet.RIC) ?? null;
     directory.set(key, {
       key,
       Company_Name: existing?.Company_Name || fleet.Company_Name,
       RIC: existing?.RIC || fleet.RIC || "",
       firm: existing?.firm || null,
       fleet,
+      finance,
     });
   });
 
@@ -389,7 +471,7 @@ function renderKpis(rows) {
           .filter((row) => row.Decision_Group === "Tanker core" || row.Decision_Group === "Dry bulk core")
           .reduce((sum, row) => sum + Math.max(row.Tanker_Pct, row.DryBulk_Pct), 0) / included
       : null;
-  const financeCoverage = all.filter((row) => row.Finance).length;
+  const financeCoverage = buildCompanyDirectory().filter((entry) => valuationForEntry(entry).finance).length;
   const items = [
     ["전체 표본", state.firms.length],
     ["탱커 주력", counts["Tanker core"]],
@@ -409,24 +491,31 @@ function renderKpis(rows) {
   });
 
   $("dataStatus").textContent = `표본 ${state.firms.length}개 · 표시 ${rows.length}개`;
-  $("financeStatus").textContent = `가치평가 입력 ${financeCoverage}개`;
+  $("financeStatus").textContent =
+    `가치평가 입력 ${financeCoverage}개${state.financeLoadedFrom ? ` · ${state.financeLoadedFrom}` : ""}`;
   $("includedLabel").textContent = `분석 포함 ${included}개`;
 }
 
 function renderValuation(rows) {
-  const all = state.firms.map(attachComputed);
-  const withFinance = all.filter((row) => row.Finance);
-  const tanker = all.filter((row) => row.Decision_Group === "Tanker core");
-  const bulk = all.filter((row) => row.Decision_Group === "Dry bulk core");
+  const valued = buildCompanyDirectory()
+    .map((entry) => ({
+      entry,
+      group: groupForEntry(entry),
+      valuation: valuationForEntry(entry),
+    }))
+    .filter((row) => row.valuation.finance);
+  const tanker = valued.filter((row) => row.group === "Tanker core");
+  const bulk = valued.filter((row) => row.group === "Dry bulk core");
+  const verified = valued.filter((row) => row.entry.fleet?.Source_Status === "verified");
   const metrics = [
-    ["탱커 EV/EBITDA 중앙값", fmtMultiple(median(tanker.map((row) => row.EV_EBITDA)))],
-    ["벌커 EV/EBITDA 중앙값", fmtMultiple(median(bulk.map((row) => row.EV_EBITDA)))],
-    ["탱커 P/B 중앙값", fmtMultiple(median(tanker.map((row) => row.P_Book)))],
-    ["벌커 P/B 중앙값", fmtMultiple(median(bulk.map((row) => row.P_Book)))],
+    ["전체 EV/EBITDA 중앙값", fmtMultiple(median(valued.map((row) => row.valuation.EV_EBITDA)))],
+    ["탱커 EV/EBITDA 중앙값", fmtMultiple(median(tanker.map((row) => row.valuation.EV_EBITDA)))],
+    ["벌커 EV/EBITDA 중앙값", fmtMultiple(median(bulk.map((row) => row.valuation.EV_EBITDA)))],
+    ["Verified EV/Fleet 중앙값", fmtNumber(median(verified.map((row) => row.valuation.EV_Fleet)), 1)],
   ];
 
-  $("valuationSummary").textContent = withFinance.length
-    ? `${withFinance.length}개 회사 재무 입력 반영`
+  $("valuationSummary").textContent = valued.length
+    ? `${valued.length}개 회사 재무 스냅샷/업로드 반영 · 탱커 ${tanker.length}개 · 벌커 ${bulk.length}개`
     : "재무 CSV를 불러오면 멀티플이 계산됩니다";
 
   $("valuationGrid").innerHTML = metrics
@@ -865,6 +954,7 @@ function render() {
   renderCompanyDashboard();
   renderValuation(rows);
   renderFleetSummary();
+  renderResearchTools();
   renderThesisAssistant();
   renderTable(rows);
   bindCompanySelection();
@@ -1059,23 +1149,23 @@ function exportBrief() {
 }
 
 function renderResearchTools() {
-  const checklist = [
-    ["선대", "공식 fleet 페이지 또는 IMO 원장으로 선종·척수·DWT를 확정"],
-    ["재무제표", "연차보고서, 20-F/10-K, 감사보고서에서 매출·EBITDA·부채·현금 수집"],
-    ["시장가", "시가총액, 주가, 환율, 발행주식수로 EV 계산"],
-    ["밸류에이션", "EV/EBITDA, P/B, EV/DWT, EV/Fleet 비교"],
-    ["검증", "출처 URL, 기준일, owned/operated/pro-forma 기준을 함께 기록"],
-  ];
-  $("researchChecklist").innerHTML = checklist
+  $("researchChecklist").innerHTML = WORKFLOW_STEPS
     .map(
-      ([label, text]) => `
-        <div class="check-item">
-          <strong>${escapeHtml(label)}</strong>
-          <span>${escapeHtml(text)}</span>
-        </div>
+      (step) => `
+        <button type="button" class="check-item ${step.id === state.activeWorkflowStep ? "active" : ""}" data-workflow-step="${escapeHtml(step.id)}">
+          <strong>${escapeHtml(step.label)}</strong>
+          <span>${escapeHtml(step.text)}</span>
+        </button>
       `,
     )
     .join("");
+  document.querySelectorAll("[data-workflow-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeWorkflowStep = button.dataset.workflowStep;
+      renderResearchTools();
+      $("workflowDetail")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  });
 
   $("openSourceTools").innerHTML = state.openSourceTools
     .map(
@@ -1088,6 +1178,46 @@ function renderResearchTools() {
       `,
     )
     .join("");
+
+  renderWorkflowDetail();
+}
+
+function renderWorkflowDetail() {
+  const step =
+    WORKFLOW_STEPS.find((item) => item.id === state.activeWorkflowStep) ?? WORKFLOW_STEPS[0];
+  const entry = selectedCompany();
+  const valuation = valuationForEntry(entry);
+  const companyLine = entry
+    ? `${entry.Company_Name} · ${fleetListMeta(entry)} · EV/EBITDA ${fmtMultiple(valuation.EV_EBITDA)}`
+    : "왼쪽 회사 목록에서 회사를 선택하면 이 단계가 회사 기준으로 바뀝니다.";
+  const stepMetric =
+    step.id === "fleet"
+      ? `공개 선대 ${fmtNumber(dataQualityMetrics().vesselCount)}척 / ${buildFleetSummary().length}개 회사`
+      : step.id === "valuation"
+        ? `가치평가 입력 ${buildCompanyDirectory().filter((item) => valuationForEntry(item).finance).length}개 회사`
+        : step.id === "verification"
+          ? `verified ${dataQualityMetrics().verified}개 / review ${dataQualityMetrics().review}개`
+          : state.financeLoadedFrom || "내장 스냅샷 또는 CSV 입력 대기";
+
+  $("workflowDetail").innerHTML = `
+    <h3>${escapeHtml(step.label)} 실행 패널</h3>
+    <p>${escapeHtml(step.text)}</p>
+    <div class="workflow-step-grid">
+      <div>
+        <strong>필요 자료</strong>
+        <span>${escapeHtml(step.need)}</span>
+      </div>
+      <div>
+        <strong>현재 계산값</strong>
+        <span>${escapeHtml(stepMetric)}</span>
+      </div>
+      <div>
+        <strong>선택 회사</strong>
+        <span>${escapeHtml(companyLine)}</span>
+      </div>
+    </div>
+    <p><strong>다음 행동:</strong> ${escapeHtml(step.action)} 결과물은 ${escapeHtml(step.output)}입니다.</p>
+  `;
 }
 
 function dataQualityMetrics() {
@@ -1097,7 +1227,7 @@ function dataQualityMetrics() {
   const verified = fleetSummary.filter((row) => row.Source_Status === "verified").length;
   const review = fleetSummary.filter((row) => row.Source_Status && row.Source_Status !== "verified").length;
   const sampleFleetCoverage = all.filter((row) => fleetRics.has(row.RIC)).length;
-  const financeCoverage = all.filter((row) => row.Finance).length;
+  const financeCoverage = buildCompanyDirectory().filter((entry) => valuationForEntry(entry).finance).length;
   const vesselCount = fleetSummary.reduce((sum, row) => sum + row.Total, 0);
   return {
     all,
@@ -1141,6 +1271,157 @@ function researchSearchLinks(topic) {
       url: `https://scholar.google.com/scholar?q=${encoded}`,
     },
   ];
+}
+
+function mean(values) {
+  const nums = values.filter((value) => Number.isFinite(value));
+  if (!nums.length) return null;
+  return nums.reduce((sum, value) => sum + value, 0) / nums.length;
+}
+
+function sampleStd(values) {
+  const nums = values.filter((value) => Number.isFinite(value));
+  if (nums.length < 2) return null;
+  const avg = mean(nums);
+  const variance = nums.reduce((sum, value) => sum + (value - avg) ** 2, 0) / (nums.length - 1);
+  return Math.sqrt(variance);
+}
+
+function correlation(a, b) {
+  const pairs = a
+    .map((value, index) => [value, b[index]])
+    .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+  if (pairs.length < 3) return null;
+  const xs = pairs.map(([x]) => x);
+  const ys = pairs.map(([, y]) => y);
+  const xMean = mean(xs);
+  const yMean = mean(ys);
+  const numerator = pairs.reduce((sum, [x, y]) => sum + (x - xMean) * (y - yMean), 0);
+  const xDenom = Math.sqrt(pairs.reduce((sum, [x]) => sum + (x - xMean) ** 2, 0));
+  const yDenom = Math.sqrt(pairs.reduce((sum, [, y]) => sum + (y - yMean) ** 2, 0));
+  return xDenom && yDenom ? numerator / (xDenom * yDenom) : null;
+}
+
+function analysisDataset() {
+  return buildCompanyDirectory()
+    .map((entry) => {
+      const valuation = valuationForEntry(entry);
+      const group = groupForEntry(entry);
+      const fleet = entry.fleet;
+      return {
+        entry,
+        valuation,
+        group,
+        fleetTotal: fleet?.Total ?? valuation.finance?.Fleet_Total ?? null,
+        owned: fleet?.Owned_Count ?? null,
+        tankerPct: fleet?.Total ? (fleet.Tanker / fleet.Total) * 100 : entry.firm?.Tanker_Pct ?? null,
+        bulkPct: fleet?.Total ? (fleet["Dry bulk"] / fleet.Total) * 100 : entry.firm?.DryBulk_Pct ?? null,
+        sourceStatus: fleet?.Source_Status || "missing",
+      };
+    })
+    .filter((row) => row.valuation.finance);
+}
+
+function seededRandom(seed) {
+  let value = seed % 2147483647;
+  if (value <= 0) value += 2147483646;
+  return () => {
+    value = (value * 16807) % 2147483647;
+    return (value - 1) / 2147483646;
+  };
+}
+
+function permutationPValue(a, b, iterations = 1200) {
+  const left = a.filter((value) => Number.isFinite(value));
+  const right = b.filter((value) => Number.isFinite(value));
+  if (left.length < 2 || right.length < 2) return null;
+  const observed = Math.abs((mean(left) ?? 0) - (mean(right) ?? 0));
+  if (!Number.isFinite(observed)) return null;
+  const pool = [...left, ...right];
+  const n = left.length;
+  const random = seededRandom(pool.length * 97 + n * 31);
+  let hits = 0;
+  for (let i = 0; i < iterations; i += 1) {
+    const shuffled = [...pool];
+    for (let j = shuffled.length - 1; j > 0; j -= 1) {
+      const k = Math.floor(random() * (j + 1));
+      [shuffled[j], shuffled[k]] = [shuffled[k], shuffled[j]];
+    }
+    const diff = Math.abs((mean(shuffled.slice(0, n)) ?? 0) - (mean(shuffled.slice(n)) ?? 0));
+    if (diff >= observed) hits += 1;
+  }
+  return hits / iterations;
+}
+
+function renderMetricResult(label, values, formatter = fmtMultiple) {
+  const nums = values.filter((value) => Number.isFinite(value));
+  return `
+    <div class="result-card">
+      <span>${escapeHtml(label)}</span>
+      <strong>${formatter(median(nums))}</strong>
+      <em>n=${nums.length} · 평균 ${formatter(mean(nums))} · 표준편차 ${formatter(sampleStd(nums))}</em>
+    </div>
+  `;
+}
+
+function renderActualAnalysis(topic) {
+  const rows = analysisDataset();
+  if (!rows.length) {
+    return `
+      <div class="analysis-result-head">
+        <h3>실제 분석 결과</h3>
+        <span>재무 입력이 아직 없어 계산 대기 중입니다.</span>
+      </div>
+    `;
+  }
+
+  const tanker = rows.filter((row) => row.group === "Tanker core");
+  const bulk = rows.filter((row) => row.group === "Dry bulk core");
+  const verified = rows.filter((row) => row.sourceStatus === "verified");
+  const review = rows.filter((row) => row.sourceStatus !== "verified");
+  const metricKey = topic?.id === "asset_quality" ? "EV_Fleet" : "EV_EBITDA";
+  const tankerValues = tanker.map((row) => row.valuation[metricKey]);
+  const bulkValues = bulk.map((row) => row.valuation[metricKey]);
+  const pValue = permutationPValue(tankerValues, bulkValues);
+  const fleetTotals = rows.map((row) => row.fleetTotal);
+  const evFleetValues = rows.map((row) => row.valuation.EV_Fleet);
+  const fleetCorrelation = correlation(fleetTotals, evFleetValues);
+  const verifiedValues = verified.map((row) => row.valuation.EV_EBITDA);
+  const reviewValues = review.map((row) => row.valuation.EV_EBITDA);
+
+  const headline =
+    topic?.id === "asset_quality"
+      ? `선대 규모와 EV/Fleet 상관계수 ${fmtNumber(fleetCorrelation, 2)}`
+      : topic?.id === "disclosure_quality"
+        ? `verified 표본 ${verified.length}개, review/미확인 ${review.length}개 비교`
+        : `탱커 ${tanker.length}개 vs 벌커 ${bulk.length}개 실제 멀티플 비교`;
+
+  return `
+    <div class="analysis-result-head">
+      <h3>실제 분석 결과</h3>
+      <span>${escapeHtml(headline)}</span>
+    </div>
+    <div class="analysis-result-grid">
+      ${renderMetricResult("탱커 EV/EBITDA", tanker.map((row) => row.valuation.EV_EBITDA))}
+      ${renderMetricResult("벌커 EV/EBITDA", bulk.map((row) => row.valuation.EV_EBITDA))}
+      ${renderMetricResult("Verified EV/EBITDA", verifiedValues)}
+      ${renderMetricResult("Review EV/EBITDA", reviewValues)}
+    </div>
+    <div class="analysis-test-row">
+      <div>
+        <strong>그룹 차이 검정</strong>
+        <span>탱커-벌커 평균 차이 permutation p-value ${pValue === null ? "-" : fmtNumber(pValue, 3)}</span>
+      </div>
+      <div>
+        <strong>선대 규모 효과</strong>
+        <span>Fleet_Total과 EV/Fleet 상관계수 ${fmtNumber(fleetCorrelation, 2)}</span>
+      </div>
+      <div>
+        <strong>논문 표본</strong>
+        <span>현재 계산 가능 ${rows.length}개 · Source verified ${verified.length}개</span>
+      </div>
+    </div>
+  `;
 }
 
 function renderThesisAssistant() {
@@ -1219,6 +1500,8 @@ function renderThesisAssistant() {
   ]
     .map((text) => `<div class="method-item">${escapeHtml(text)}</div>`)
     .join("");
+
+  $("actualAnalysis").innerHTML = renderActualAnalysis(topic);
 
   const literature = researchSearchLinks(topic)
     .map(
@@ -1444,23 +1727,25 @@ function companyLinks(entry) {
 }
 
 function valuationItems(entry) {
-  const firm = entry?.firm ?? null;
+  const valuation = valuationForEntry(entry);
+  const finance = valuation.finance;
   return [
-    ["시가총액", firm?.Finance?.Market_Cap, firm?.Finance?.Currency],
-    ["기업가치 EV", firm?.EV, firm?.Finance?.Currency],
-    ["매출", firm?.Finance?.Revenue, firm?.Finance?.Currency],
-    ["EBITDA", firm?.Finance?.EBITDA, firm?.Finance?.Currency],
-    ["EV/EBITDA", firm?.EV_EBITDA, "multiple"],
-    ["P/B", firm?.P_Book, "multiple"],
-    ["EV/DWT", firm?.EV_DWT, firm?.Finance?.Currency],
-    ["EV/Fleet", firm?.EV_Fleet, firm?.Finance?.Currency],
+    ["시가총액", finance?.Market_Cap, finance?.Currency],
+    ["기업가치 EV", valuation.EV, finance?.Currency],
+    ["매출", finance?.Revenue, finance?.Currency],
+    ["EBITDA", finance?.EBITDA, finance?.Currency],
+    ["EV/EBITDA", valuation.EV_EBITDA, "multiple"],
+    ["P/B", valuation.P_Book, "multiple"],
+    ["EV/DWT", valuation.EV_DWT, finance?.Currency],
+    ["EV/Fleet", valuation.EV_Fleet, finance?.Currency],
   ];
 }
 
 function buildCompanyResearchNote(entry) {
   const firm = entry?.firm ?? null;
   const fleet = entry?.fleet ?? null;
-  const finance = firm?.Finance ?? null;
+  const valuation = valuationForEntry(entry);
+  const finance = valuation.finance;
   const lines = [
     `# ${entry.Company_Name} 연구 노트`,
     "",
@@ -1478,10 +1763,10 @@ function buildCompanyResearchNote(entry) {
     "",
     "## 기업가치 분석",
     "",
-    `- EV/EBITDA: ${fmtMultiple(firm?.EV_EBITDA)}`,
-    `- P/B: ${fmtMultiple(firm?.P_Book)}`,
-    `- EV/DWT: ${fmtNumber(firm?.EV_DWT, 2)}`,
-    `- EV/Fleet: ${fmtNumber(firm?.EV_Fleet, 2)}`,
+    `- EV/EBITDA: ${fmtMultiple(valuation.EV_EBITDA)}`,
+    `- P/B: ${fmtMultiple(valuation.P_Book)}`,
+    `- EV/DWT: ${fmtNumber(valuation.EV_DWT, 2)}`,
+    `- EV/Fleet: ${fmtNumber(valuation.EV_Fleet, 2)}`,
     finance
       ? `- 재무 입력 출처: ${finance.Source || "출처 미기재"} ${finance.Source_Date || ""}`.trim()
       : "- 재무 입력: 아직 없음. 가치평가 입력 템플릿에 Market_Cap, Debt, Cash, EBITDA, Book_Equity, DWT_Total을 넣어야 합니다.",
@@ -1536,7 +1821,8 @@ function renderCompanyDashboard() {
 
   const firm = entry.firm;
   const fleet = entry.fleet;
-  const finance = firm?.Finance ?? null;
+  const valuation = valuationForEntry(entry);
+  const finance = valuation.finance;
   $("selectedCompanyName").textContent = entry.Company_Name;
   $("selectedCompanySubtitle").textContent = `${entry.RIC || "RIC 미확인"} · ${firm?.Decision_Label ?? "공식 선대자료"} · ${fleet?.Basis ?? "선대 기준 확인 필요"}`;
   $("selectedCompanyStatus").textContent = fleet?.Source_Status
@@ -1721,6 +2007,7 @@ async function handleFile(event) {
     rows.map(normalizeFinance).forEach((row) => {
       if (row) state.finance.set(row.RIC, row);
     });
+    state.financeLoadedFrom = file.name;
   } else {
     state.firms = rows.map(normalizeFirm).filter((row) => row.RIC && row.Company_Name);
   }
@@ -1731,16 +2018,24 @@ async function handleFile(event) {
 }
 
 async function init() {
-  const [firmsResponse, fleetResponse, toolsResponse, blueprintResponse] = await Promise.all([
+  const [firmsResponse, fleetResponse, toolsResponse, blueprintResponse, valuationResponse] = await Promise.all([
     fetch("./data/firms.json", { cache: "no-store" }),
     fetch("./data/listed_fleet_counts.json", { cache: "no-store" }),
     fetch("./data/open_source_tools.json", { cache: "no-store" }),
     fetch("./data/research_blueprint.json", { cache: "no-store" }),
+    fetch("./data/valuation_inputs_generated.json", { cache: "no-store" }).catch(() => null),
   ]);
   state.firms = (await firmsResponse.json()).map(normalizeFirm);
   state.officialFleet = (await fleetResponse.json()).map(normalizeFleetSummaryRow).filter(Boolean);
   state.openSourceTools = await toolsResponse.json();
   state.researchBlueprint = await blueprintResponse.json();
+  if (valuationResponse?.ok) {
+    const financeRows = await valuationResponse.json();
+    financeRows.map(normalizeFinance).forEach((row) => {
+      if (row) state.finance.set(row.RIC, row);
+    });
+    state.financeLoadedFrom = "내장 재무 스냅샷";
+  }
   state.activeTopic = state.researchBlueprint.topics?.[0]?.id ?? state.activeTopic;
   $("searchInput").addEventListener("input", (event) => {
     state.search = event.target.value;
@@ -1791,7 +2086,6 @@ async function init() {
     if (event.key === "Escape" && !$("previewModal").hidden) closePreview();
   });
   window.addEventListener("resize", render);
-  renderResearchTools();
   render();
 }
 

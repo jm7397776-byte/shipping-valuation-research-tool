@@ -94,5 +94,23 @@
     "stage": "DCF 모델 참고",
     "use_case": "Python 기반 DCF 계산 구조를 연구 모델 설계에 참고",
     "url": "https://github.com/halessi/DCF"
+  },
+  {
+    "name": "simple-statistics",
+    "stage": "브라우저 통계 계산",
+    "use_case": "중앙값, 분산, 회귀, 분위수 같은 기초 통계를 대시보드 안에서 직접 계산",
+    "url": "https://github.com/simple-statistics/simple-statistics"
+  },
+  {
+    "name": "jStat",
+    "stage": "통계 검정",
+    "use_case": "t-test, 분포 함수, ANOVA 등 논문용 검정 기능을 브라우저·Node에서 확장",
+    "url": "https://github.com/jstat/jstat"
+  },
+  {
+    "name": "Arquero",
+    "stage": "브라우저 데이터프레임",
+    "use_case": "CSV 표본을 groupby, aggregate, filter로 처리해 연구용 패널 데이터를 구성",
+    "url": "https://github.com/uwdata/arquero"
   }
 ]

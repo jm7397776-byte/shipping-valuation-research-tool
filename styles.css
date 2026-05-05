@@ -21,10 +21,16 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   background: var(--surface);
   color: var(--ink);
+  font-size: 14px;
 }
 
 button,
@@ -358,16 +364,22 @@ canvas {
 .company-name-button {
   width: 100%;
   height: auto;
-  min-height: 0;
+  min-height: 66px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: auto;
+  align-items: start;
+  justify-content: stretch;
   justify-items: start;
-  gap: 3px;
-  padding: 10px;
+  gap: 4px;
+  padding: 11px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
   color: #17202a;
   text-align: left;
+  line-height: normal;
+  overflow: hidden;
 }
 
 .company-list-item:hover,
@@ -382,19 +394,26 @@ canvas {
   background: #ecfdf5;
 }
 
-.company-list-item strong,
-.company-name-button strong {
+button.company-list-item > strong,
+button.company-name-button > strong {
+  display: block;
+  width: 100%;
   color: #17202a;
   font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
-.company-list-item span,
-.company-list-item em,
-.company-name-button span {
+button.company-list-item > span,
+button.company-list-item > em,
+button.company-name-button > span {
+  display: block;
+  width: 100%;
   color: var(--muted);
   font-size: 11px;
   font-style: normal;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .empty-list {
@@ -696,6 +715,78 @@ canvas {
   font-size: 12px;
 }
 
+.actual-analysis {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.analysis-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.analysis-result-head h3 {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+}
+
+.analysis-result-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.analysis-result-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.result-card,
+.analysis-test-row div {
+  min-height: 82px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.result-card span,
+.result-card em,
+.analysis-test-row span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.result-card strong {
+  display: block;
+  margin: 6px 0;
+  color: #17202a;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.analysis-test-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.analysis-test-row strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #17202a;
+  font-size: 12px;
+}
+
 .checklist-grid,
 .tool-list {
   display: grid;
@@ -712,6 +803,70 @@ canvas {
   border-radius: 8px;
   background: #fff;
   text-decoration: none;
+}
+
+.check-item {
+  width: 100%;
+  color: var(--ink);
+  text-align: left;
+}
+
+.check-item.active {
+  border-color: #0f766e;
+  background: #ecfdf5;
+}
+
+.workflow-detail {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.workflow-detail h3 {
+  margin: 0;
+  color: #17202a;
+  font-size: 14px;
+}
+
+.workflow-detail p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.workflow-step-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.workflow-step-grid div {
+  min-height: 76px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.workflow-step-grid strong,
+.workflow-step-grid span {
+  display: block;
+  font-size: 12px;
+}
+
+.workflow-step-grid strong {
+  color: #17202a;
+}
+
+.workflow-step-grid span {
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .tool-item {
@@ -1040,6 +1195,7 @@ td.number {
   .kpi-strip,
   .valuation-grid,
   .quality-grid,
+  .analysis-result-grid,
   .fleet-count-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1067,8 +1223,21 @@ td.number {
   .fleet-count-grid,
   .company-metric-grid,
   .mini-button-grid,
-  .company-link-row {
+  .company-link-row,
+  .analysis-result-grid,
+  .analysis-test-row,
+  .workflow-step-grid {
     grid-template-columns: 1fr;
+  }
+
+  .company-list {
+    max-height: 520px;
+  }
+
+  .company-list-item,
+  .company-name-button {
+    min-height: 72px;
+    padding: 10px 11px;
   }
 
   .panel-title {

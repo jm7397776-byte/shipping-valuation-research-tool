@@ -15,6 +15,7 @@ python3 -m http.server 4173
 - `data/firms.csv`: 원 엑셀의 55개 회사 표본을 정규화한 파일
 - `data/firms.json`: 대시보드가 바로 읽는 기본 데이터
 - `data/valuation_inputs_template.csv`: 가치평가 입력 템플릿
+- `data/valuation_inputs_generated.json`: yfinance 공개 시장 데이터로 만든 기본 가치평가 스냅샷
 - `data/listed_fleet_counts.json`: 공식 공개자료로 확인한 상장 해운사 선대 수
 - `data/open_source_tools.json`: 가치평가·공시 수집에 쓸 오픈소스/GitHub 도구 목록
 - `data/research_blueprint.json`: 논문 주제, 가설, 변수, 방법론, 공개 데이터 출처 목록
@@ -111,8 +112,18 @@ python3 -m http.server 4173
 - 미리보기 하단의 `다운로드`를 눌렀을 때만 파일로 저장됩니다.
 - 회사별 판정표의 `자료실` 버튼은 시장가격, SEC 공시, 선대 공식자료, IR 검색 링크를 보여줍니다.
 - `기업가치평가 데이터룸`에는 OpenBB, EdgarTools, sec-edgar-downloader, yfinance, Arelle 등 연구 자동화에 쓸 오픈소스 도구 링크가 들어 있습니다.
-- `논문 작성 도우미`는 데이터 완성도, 추천 연구 주제, 가설, 종속·설명변수, 분석 방법, OpenAlex/Crossref/Semantic Scholar 문헌검색 링크를 보여줍니다.
+- `기업가치평가 데이터룸`의 체크리스트 카드를 누르면 바로 아래 실행 패널에 필요한 자료, 현재 계산값, 선택 회사 기준 다음 행동이 표시됩니다.
+- `논문 작성 도우미`는 데이터 완성도, 추천 연구 주제, 가설, 종속·설명변수, 분석 방법, OpenAlex/Crossref/Semantic Scholar 문헌검색 링크와 실제 계산 결과를 함께 보여줍니다.
+- `실제 분석 결과`에는 탱커·벌커 EV/EBITDA 중앙값, verified/review 표본 비교, permutation p-value, Fleet_Total과 EV/Fleet 상관계수가 바로 계산됩니다.
 - 상단 `논문 패키지` 버튼은 현재 표본 상태, 데이터 한계, 선택한 연구 주제, 가설, 방법론, 공개 데이터·오픈소스 링크를 마크다운으로 미리 보여줍니다.
+
+## 재무 스냅샷 갱신
+
+```bash
+python3 scripts/refresh_finance_yfinance.py
+```
+
+이 명령은 `data/firms.json`과 `data/listed_fleet_counts.json`의 RIC를 읽어 `data/valuation_inputs_generated.json`과 `.csv`를 다시 만듭니다. yfinance 값은 공개 시장 스냅샷이므로 논문 최종값은 감사보고서·연차보고서에서 확인한 수치로 CSV 업로드해 덮어쓰는 것을 권장합니다.
 
 ## 논문에 바로 쓸 때의 기준
 
