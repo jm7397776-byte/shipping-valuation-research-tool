@@ -2,7 +2,10 @@ const state = {
   firms: [],
   finance: new Map(),
   fleetRecords: [],
+  officialFleet: [],
+  openSourceTools: [],
   fleetCategory: "All",
+  preview: null,
   thresholds: {
     tanker: 60,
     bulk: 70,
@@ -137,6 +140,45 @@ function normalizeFleetRecord(row) {
     Source: row.Source ?? "",
     Source_Date: row.Source_Date ?? "",
   };
+}
+
+function normalizeFleetSummaryRow(row) {
+  const company = row.Company_Name ?? row.Company ?? "";
+  if (!company) return null;
+  const item = {
+    Company_Name: String(company).trim(),
+    RIC: row.RIC ?? row.Ticker ?? "",
+    Total: parseNumber(row.Total) ?? 0,
+    Tanker: parseNumber(row.Tanker) ?? 0,
+    "Dry bulk": parseNumber(row.Dry_Bulk ?? row["Dry bulk"] ?? row.DryBulk) ?? 0,
+    Container: parseNumber(row.Container) ?? 0,
+    "Gas carrier": parseNumber(row.Gas_Carrier ?? row["Gas carrier"] ?? row.Gas) ?? 0,
+    "General cargo": parseNumber(row.General_Cargo ?? row["General cargo"]) ?? 0,
+    Offshore: parseNumber(row.Offshore) ?? 0,
+    Passenger: parseNumber(row.Passenger) ?? 0,
+    Other: parseNumber(row.Other) ?? 0,
+    Owned_Count: parseNumber(row.Owned_Count),
+    Chartered_Count: parseNumber(row.Chartered_Count),
+    Basis: row.Basis ?? "",
+    As_Of: row.As_Of ?? row.Source_Date ?? "",
+    Source_Name: row.Source_Name ?? row.Source ?? "",
+    Source_URL: row.Source_URL ?? "",
+    Source_Status: row.Source_Status ?? "",
+    Notes: row.Notes ?? "",
+    ExactTypes: new Map(),
+  };
+  if (!item.Total) {
+    item.Total =
+      item.Tanker +
+      item["Dry bulk"] +
+      item.Container +
+      item["Gas carrier"] +
+      item["General cargo"] +
+      item.Offshore +
+      item.Passenger +
+      item.Other;
+  }
+  return item.Total ? item : null;
 }
 
 function majorShipType(shipType) {
@@ -330,7 +372,7 @@ function renderValuation(rows) {
     .join("");
 }
 
-function buildFleetSummary() {
+function buildRawFleetSummary() {
   const byCompany = new Map();
   const seen = new Set();
 
@@ -366,13 +408,21 @@ function buildFleetSummary() {
   return Array.from(byCompany.values()).sort((a, b) => b.Total - a.Total || a.Company_Name.localeCompare(b.Company_Name));
 }
 
+function buildFleetSummary() {
+  if (state.fleetRecords.length) return buildRawFleetSummary();
+  return [...state.officialFleet].sort(
+    (a, b) => b.Total - a.Total || a.Company_Name.localeCompare(b.Company_Name),
+  );
+}
+
 function renderFleetSummary() {
   const summary = buildFleetSummary();
   const vesselCount = summary.reduce((sum, row) => sum + row.Total, 0);
-  $("fleetStatus").textContent = `전세계 선대 원장 ${vesselCount}척 · 회사 ${summary.length}개`;
-  $("fleetSummaryLabel").textContent = state.fleetRecords.length
-    ? `${vesselCount}척 집계 · ${FLEET_CATEGORIES.find(([key]) => key === state.fleetCategory)?.[1] ?? "전체"} 기준`
-    : "IMO 단위 원장을 불러오면 회사별 선종 수가 계산됩니다";
+  const sourceMode = state.fleetRecords.length ? "업로드 원장" : "공식 출처";
+  $("fleetStatus").textContent = `${sourceMode} 선대 ${vesselCount}척 · 회사 ${summary.length}개`;
+  $("fleetSummaryLabel").textContent = summary.length
+    ? `${sourceMode} ${vesselCount}척 · ${FLEET_CATEGORIES.find(([key]) => key === state.fleetCategory)?.[1] ?? "전체"} 기준`
+    : "공식 출처 기반 선대 자료를 로드하지 못했습니다";
 
   const totals = Object.fromEntries(FLEET_CATEGORIES.map(([key]) => [key, 0]));
   summary.forEach((row) => {
@@ -406,10 +456,10 @@ function renderFleetSummary() {
           return selectedDiff || b.Total - a.Total;
         });
 
-  if (!state.fleetRecords.length) {
+  if (!summary.length) {
     $("fleetTable").innerHTML = `
       <tr>
-        <td colspan="10" class="reason-cell">선대 템플릿에 IMO 단위 데이터를 넣고 CSV 불러오기를 누르면 회사별 선종 수가 표시됩니다.</td>
+        <td colspan="11" class="reason-cell">공식자료 선대 수를 불러오지 못했습니다. 선대 템플릿에 IMO 단위 데이터를 넣고 CSV 불러오기를 누르면 회사별 선종 수가 계산됩니다.</td>
       </tr>
     `;
     return;
@@ -430,10 +480,20 @@ function renderFleetSummary() {
         <td class="number">${fmtNumber(row.Offshore)}</td>
         <td class="number">${fmtNumber(row.Passenger)}</td>
         <td class="number">${fmtNumber(row.Other)}</td>
+        <td class="source-cell">${renderSourceLink(row)}</td>
       </tr>
     `,
     )
     .join("");
+}
+
+function renderSourceLink(row) {
+  const label = row.Source_Status ? `${row.Source_Status}` : row.Source_Name || "보기";
+  const meta = [row.Basis, row.As_Of].filter(Boolean).join(" · ");
+  const source = row.Source_URL
+    ? `<a href="${escapeHtml(row.Source_URL)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`
+    : escapeHtml(label);
+  return `${source}${meta ? `<span>${escapeHtml(meta)}</span>` : ""}`;
 }
 
 function badgeClass(group) {
@@ -457,10 +517,14 @@ function renderTable(rows) {
         <td>${escapeHtml(row.Segment)}</td>
         <td class="reason-cell">${escapeHtml(row.Decision_Reason)}<br>${escapeHtml(row.Verdict_Fleet_Description)}</td>
         <td class="number">${fmtMultiple(row.EV_EBITDA)}</td>
+        <td><button class="row-action" type="button" data-dataroom="${escapeHtml(row.RIC)}">자료실</button></td>
       </tr>
     `,
     )
     .join("");
+  document.querySelectorAll("[data-dataroom]").forEach((button) => {
+    button.addEventListener("click", () => showCompanyDataroom(button.dataset.dataroom));
+  });
 }
 
 function drawComposition(rows) {
@@ -661,8 +725,8 @@ function download(filename, content, type = "text/csv") {
   URL.revokeObjectURL(url);
 }
 
-function exportClassification() {
-  const rows = state.firms.map(attachComputed).map((row) => ({
+function classificationRows() {
+  return state.firms.map(attachComputed).map((row) => ({
     Firm_ID: row.Firm_ID,
     Company_Name: row.Company_Name,
     RIC: row.RIC,
@@ -675,11 +739,19 @@ function exportClassification() {
     EV_Revenue: row.EV_Revenue,
     P_Book: row.P_Book,
   }));
-  download("shipping_fleet_classification.csv", toCsv(rows));
 }
 
-function exportFleetSummary() {
-  const summary = buildFleetSummary().map((row) => ({
+function exportClassification() {
+  showPreview({
+    title: "분류 CSV 미리보기",
+    filename: "shipping_fleet_classification.csv",
+    content: toCsv(classificationRows()),
+    type: "csv",
+  });
+}
+
+function fleetSummaryRows() {
+  return buildFleetSummary().map((row) => ({
     Company_Name: row.Company_Name,
     RIC: row.RIC,
     Total: row.Total,
@@ -691,33 +763,48 @@ function exportFleetSummary() {
     Offshore: row.Offshore,
     Passenger: row.Passenger,
     Other: row.Other,
+    Owned_Count: row.Owned_Count,
+    Chartered_Count: row.Chartered_Count,
+    Basis: row.Basis,
+    As_Of: row.As_Of,
+    Source_Name: row.Source_Name,
+    Source_URL: row.Source_URL,
+    Source_Status: row.Source_Status,
+    Notes: row.Notes,
     Exact_Ship_Types: Array.from(row.ExactTypes.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([type, count]) => `${type}:${count}`)
       .join("; "),
   }));
-  if (!summary.length) {
-    download("shipping_fleet_summary.csv", "Company_Name,Total,Tanker,Dry_Bulk,Container\n");
-    return;
-  }
-  download("shipping_fleet_summary.csv", toCsv(summary));
 }
 
-function exportBrief() {
+function exportFleetSummary() {
+  const rows = fleetSummaryRows();
+  showPreview({
+    title: "선대 요약 미리보기",
+    filename: "shipping_fleet_summary.csv",
+    content: rows.length ? toCsv(rows) : "Company_Name,Total,Tanker,Dry_Bulk,Container\n",
+    type: "csv",
+  });
+}
+
+function buildBriefText() {
   const all = state.firms.map(attachComputed);
   const counts = groupCounts(all);
   const fleetSummary = buildFleetSummary();
   const fleetVesselCount = fleetSummary.reduce((sum, row) => sum + row.Total, 0);
+  const sourceMode = state.fleetRecords.length ? "업로드 원장" : "공식 출처 기반 공개자료";
   const lines = [
-    "# 탱커 vs 벌커 상장사 표본 분류 노트",
+    "# 탱커 vs 벌커 상장사 분류 및 기업가치평가 연구 노트",
     "",
     `- 표본 수: ${state.firms.length}`,
     `- 탱커 주력: ${counts["Tanker core"]}`,
     `- 벌커 주력: ${counts["Dry bulk core"]}`,
     `- 혼합·검토: ${counts["Mixed / review"]}`,
     `- 제외: ${counts.Excluded}`,
-    `- IMO 원장 집계 선박 수: ${fleetVesselCount}`,
-    `- IMO 원장 집계 회사 수: ${fleetSummary.length}`,
+    `- 선대 자료 기준: ${sourceMode}`,
+    `- 선대 집계 선박 수: ${fleetVesselCount}`,
+    `- 선대 집계 회사 수: ${fleetSummary.length}`,
     "",
     "## 현재 판정 기준",
     "",
@@ -725,13 +812,224 @@ function exportBrief() {
     `- 벌커 주력: DryBulk_% >= ${state.thresholds.bulk}% 및 Tanker_% <= ${state.thresholds.opposite}%`,
     "- 원자료 설명에 EXCLUDE, insufficient trading data, combination carrier가 있으면 제외",
     "",
-    "## 연구 설계 메모",
+    "## 연구 주제 초안",
     "",
-    "- 1단계: 주력 선종 구분을 고정한다.",
-    "- 2단계: 동일 기준으로 EV/EBITDA, P/B, EV/DWT, EV/Fleet을 비교한다.",
-    "- 3단계: 혼합·제외 기업은 주 분석에서 제외하고 강건성 검정에 별도 사용한다.",
+    "- 주제: 상장 해운사의 주력 선종 노출이 기업가치 멀티플에 미치는 영향",
+    "- 가설 1: 탱커 주력사는 유가, 정제마진, 톤마일 충격에 따라 EV/EBITDA 변동성이 벌커 주력사와 다르다.",
+    "- 가설 2: 벌커 주력사는 BDI, 중국 철광석 수요, 선령 구조가 P/B 할인율을 설명한다.",
+    "- 가설 3: 선대 순도와 친환경·신조선 비중은 EV/DWT 또는 EV/Fleet 프리미엄을 만든다.",
+    "",
+    "## 분석 설계",
+    "",
+    "- 1단계: 공식 선대 자료 또는 IMO 원장으로 주력 선종을 고정한다.",
+    "- 2단계: 감사보고서, 연차보고서, XBRL, 시장가격에서 EV, EBITDA, 순부채, 장부가를 수집한다.",
+    "- 3단계: EV/EBITDA, EV/Revenue, P/B, EV/DWT, EV/Fleet을 탱커 주력과 벌커 주력으로 비교한다.",
+    "- 4단계: 혼합 선대, 거래 데이터 부족, 상장폐지·관리종목은 본 분석에서 제외하고 강건성 검정에만 둔다.",
+    "",
+    "## 정확성 원칙",
+    "",
+    "- 선대 수는 출처 URL, 기준일, 산정 기준을 함께 저장한다.",
+    "- 공개자료로 확인되지 않은 회사는 숫자를 임의 입력하지 않는다.",
+    "- 유료 원장을 받으면 IMO 단위 원장 업로드로 재계산한다.",
   ];
-  download("shipping_research_note.md", lines.join("\n"), "text/markdown");
+  return lines.join("\n");
+}
+
+function exportBrief() {
+  showPreview({
+    title: "연구 노트 미리보기",
+    filename: "shipping_research_note.md",
+    content: buildBriefText(),
+    type: "markdown",
+  });
+}
+
+function renderResearchTools() {
+  const checklist = [
+    ["선대", "공식 fleet 페이지 또는 IMO 원장으로 선종·척수·DWT를 확정"],
+    ["재무제표", "연차보고서, 20-F/10-K, 감사보고서에서 매출·EBITDA·부채·현금 수집"],
+    ["시장가", "시가총액, 주가, 환율, 발행주식수로 EV 계산"],
+    ["밸류에이션", "EV/EBITDA, P/B, EV/DWT, EV/Fleet 비교"],
+    ["검증", "출처 URL, 기준일, owned/operated/pro-forma 기준을 함께 기록"],
+  ];
+  $("researchChecklist").innerHTML = checklist
+    .map(
+      ([label, text]) => `
+        <div class="check-item">
+          <strong>${escapeHtml(label)}</strong>
+          <span>${escapeHtml(text)}</span>
+        </div>
+      `,
+    )
+    .join("");
+
+  $("openSourceTools").innerHTML = state.openSourceTools
+    .map(
+      (tool) => `
+        <a class="tool-item" href="${escapeHtml(tool.url)}" target="_blank" rel="noopener">
+          <strong>${escapeHtml(tool.name)}</strong>
+          <span>${escapeHtml(tool.use_case)}</span>
+          <em>${escapeHtml(tool.stage)}</em>
+        </a>
+      `,
+    )
+    .join("");
+}
+
+function showPreview(payload) {
+  state.preview = payload;
+  $("previewTitle").textContent = payload.title;
+  $("previewBody").innerHTML = renderPreviewBody(payload);
+  const sourceLink = $("previewSourceLink");
+  if (payload.sourceUrl) {
+    sourceLink.hidden = false;
+    sourceLink.href = payload.sourceUrl;
+  } else {
+    sourceLink.hidden = true;
+    sourceLink.removeAttribute("href");
+  }
+  $("previewDownload").hidden = !payload.filename || !payload.content;
+  $("previewModal").hidden = false;
+}
+
+function closePreview() {
+  $("previewModal").hidden = true;
+  state.preview = null;
+}
+
+function renderPreviewBody(payload) {
+  if (payload.type === "html") return payload.html;
+  if (payload.type === "csv") return renderCsvPreview(payload.content);
+  return `<pre>${escapeHtml(payload.content)}</pre>`;
+}
+
+function renderCsvPreview(content) {
+  const rows = parseCsv(content);
+  if (!rows.length) return `<pre>${escapeHtml(content)}</pre>`;
+  const headers = Object.keys(rows[0]);
+  return `
+    <div class="preview-count">${fmtNumber(rows.length)}개 행 · 처음 80개 행 표시</div>
+    <div class="table-wrap preview-table">
+      <table>
+        <thead>
+          <tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
+        </thead>
+        <tbody>
+          ${rows
+            .slice(0, 80)
+            .map(
+              (row) => `
+                <tr>
+                  ${headers.map((header) => `<td>${escapeHtml(row[header])}</td>`).join("")}
+                </tr>
+              `,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function previewStaticCsv(title, url, filename) {
+  const response = await fetch(url, { cache: "no-store" });
+  const content = await response.text();
+  showPreview({
+    title,
+    filename,
+    content,
+    type: "csv",
+    sourceUrl: url,
+  });
+}
+
+function ricToYahoo(ric) {
+  if (!ric) return "";
+  const replacements = [
+    [/\.OQ$/i, ""],
+    [/\.N$/i, ""],
+    [/\.A$/i, ""],
+    [/\.PSX$/i, ".KA"],
+    [/\.HNO$/i, ".HN"],
+  ];
+  let symbol = ric;
+  replacements.forEach(([pattern, replacement]) => {
+    symbol = symbol.replace(pattern, replacement);
+  });
+  return symbol;
+}
+
+function isUsListedRic(ric) {
+  return /\.OQ$|\.N$|\.A$/i.test(ric);
+}
+
+function showCompanyDataroom(ric) {
+  const row = state.firms.map(attachComputed).find((item) => item.RIC === ric);
+  if (!row) return;
+  const fleet = buildFleetSummary().find((item) => item.RIC === ric);
+  const yahoo = ricToYahoo(row.RIC);
+  const links = [
+    {
+      label: "시장가격",
+      value: yahoo ? `Yahoo Finance · ${yahoo}` : "RIC 변환 필요",
+      url: yahoo ? `https://finance.yahoo.com/quote/${encodeURIComponent(yahoo)}` : "",
+    },
+    {
+      label: "SEC 감사보고서/공시",
+      value: isUsListedRic(row.RIC) ? "EDGAR 20-F/10-K 검색" : "비미국 상장사는 거래소/IR 링크 확인",
+      url: isUsListedRic(row.RIC)
+        ? `https://www.sec.gov/edgar/search/#/q=${encodeURIComponent(row.Company_Name)}`
+        : "",
+    },
+    {
+      label: "선대 공식자료",
+      value: fleet ? `${fleet.Source_Name || "공식자료"} · ${fleet.As_Of || "기준일 확인"}` : "아직 공식자료 미확인",
+      url: fleet?.Source_URL ?? "",
+    },
+    {
+      label: "IR/연차보고서 검색",
+      value: "회사명 + investor relations + annual report",
+      url: `https://www.google.com/search?q=${encodeURIComponent(`${row.Company_Name} investor relations annual report fleet`)}`,
+    },
+  ];
+  const csv = toCsv(
+    links.map((link) => ({
+      Company_Name: row.Company_Name,
+      RIC: row.RIC,
+      Item: link.label,
+      Value: link.value,
+      URL: link.url,
+    })),
+  );
+  showPreview({
+    title: `${row.Company_Name} 자료실`,
+    filename: `${row.RIC || row.Company_Name}_research_links.csv`,
+    content: csv,
+    type: "html",
+    html: `
+      <div class="dataroom-head">
+        <strong>${escapeHtml(row.Decision_Label)}</strong>
+        <span>${escapeHtml(row.Decision_Reason)}</span>
+      </div>
+      <div class="link-list">
+        ${links
+          .map(
+            (link) => `
+              <div class="link-item">
+                <strong>${escapeHtml(link.label)}</strong>
+                <span>${escapeHtml(link.value)}</span>
+                ${
+                  link.url
+                    ? `<a href="${escapeHtml(link.url)}" target="_blank" rel="noopener">열기</a>`
+                    : `<em>수동 확인</em>`
+                }
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    `,
+  });
 }
 
 async function handleFile(event) {
@@ -764,8 +1062,14 @@ async function handleFile(event) {
 }
 
 async function init() {
-  const response = await fetch("./data/firms.json", { cache: "no-store" });
-  state.firms = (await response.json()).map(normalizeFirm);
+  const [firmsResponse, fleetResponse, toolsResponse] = await Promise.all([
+    fetch("./data/firms.json", { cache: "no-store" }),
+    fetch("./data/listed_fleet_counts.json", { cache: "no-store" }),
+    fetch("./data/open_source_tools.json", { cache: "no-store" }),
+  ]);
+  state.firms = (await firmsResponse.json()).map(normalizeFirm);
+  state.officialFleet = (await fleetResponse.json()).map(normalizeFleetSummaryRow).filter(Boolean);
+  state.openSourceTools = await toolsResponse.json();
   $("searchInput").addEventListener("input", (event) => {
     state.search = event.target.value;
     render();
@@ -787,10 +1091,32 @@ async function init() {
     render();
   });
   $("fileInput").addEventListener("change", handleFile);
+  $("previewValuationTemplate").addEventListener("click", () =>
+    previewStaticCsv(
+      "가치평가 입력 템플릿",
+      "./data/valuation_inputs_template.csv",
+      "valuation_inputs_template.csv",
+    ),
+  );
+  $("previewFleetTemplate").addEventListener("click", () =>
+    previewStaticCsv("선대 원장 템플릿", "./data/fleet_raw_template.csv", "fleet_raw_template.csv"),
+  );
   $("exportCsv").addEventListener("click", exportClassification);
   $("exportFleet").addEventListener("click", exportFleetSummary);
   $("exportBrief").addEventListener("click", exportBrief);
+  $("previewDownload").addEventListener("click", () => {
+    if (!state.preview) return;
+    const mime = state.preview.type === "markdown" ? "text/markdown" : "text/csv";
+    download(state.preview.filename, state.preview.content, mime);
+  });
+  document.querySelectorAll("[data-close-preview]").forEach((button) => {
+    button.addEventListener("click", closePreview);
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !$("previewModal").hidden) closePreview();
+  });
   window.addEventListener("resize", render);
+  renderResearchTools();
   render();
 }
 

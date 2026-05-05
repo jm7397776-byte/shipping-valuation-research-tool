@@ -1,0 +1,50 @@
+[
+  {
+    "name": "OpenBB",
+    "stage": "시장·재무 데이터 허브",
+    "use_case": "주가, 재무 데이터, 매크로 지표를 Python/CLI/API로 연결",
+    "url": "https://github.com/OpenBB-finance/OpenBB"
+  },
+  {
+    "name": "EdgarTools",
+    "stage": "SEC 공시·XBRL",
+    "use_case": "미국 상장 해운사의 20-F, 10-K, 10-Q, 재무제표를 구조화",
+    "url": "https://github.com/dgunning/edgartools"
+  },
+  {
+    "name": "sec-edgar-downloader",
+    "stage": "감사보고서 다운로드",
+    "use_case": "회사별 20-F, 10-K, 6-K, 8-K 원문 파일을 일괄 수집",
+    "url": "https://github.com/jadchaar/sec-edgar-downloader"
+  },
+  {
+    "name": "yfinance",
+    "stage": "시장가격",
+    "use_case": "연구·교육용 주가, 시가총액, 환율 보조 데이터 수집",
+    "url": "https://github.com/ranaroussi/yfinance"
+  },
+  {
+    "name": "Arelle",
+    "stage": "XBRL 검증·파싱",
+    "use_case": "XBRL/iXBRL 감사보고서와 재무제표 태그를 검증하고 추출",
+    "url": "https://github.com/Arelle/Arelle"
+  },
+  {
+    "name": "secfsdstools",
+    "stage": "SEC 재무제표 데이터셋",
+    "use_case": "SEC Financial Statement Data Sets를 SQLite/Parquet로 분석",
+    "url": "https://github.com/HansjoergW/sec-fincancial-statement-data-set"
+  },
+  {
+    "name": "OpenEDGAR",
+    "stage": "연구 DB 구축",
+    "use_case": "EDGAR 원천자료로 대량 연구용 데이터베이스를 구성",
+    "url": "https://github.com/LexPredict/openedgar"
+  },
+  {
+    "name": "DCF",
+    "stage": "DCF 모델 참고",
+    "use_case": "Python 기반 DCF 계산 구조를 연구 모델 설계에 참고",
+    "url": "https://github.com/halessi/DCF"
+  }
+]

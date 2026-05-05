@@ -1,6 +1,6 @@
 # Shipping Fleet Classifier
 
-탱커·벌커 상장사 표본을 `탱커 주력`, `벌커 주력`, `혼합·검토`, `제외`로 재현 가능하게 구분하는 연구용 정적 대시보드입니다.
+탱커·벌커 상장사 표본을 `탱커 주력`, `벌커 주력`, `혼합·검토`, `제외`로 재현 가능하게 구분하고, 공식 출처 기반 선대 수와 기업가치평가 자료 링크를 한 화면에서 보는 연구용 정적 대시보드입니다.
 
 ## 바로 사용
 
@@ -15,6 +15,8 @@ python3 -m http.server 4173
 - `data/firms.csv`: 원 엑셀의 55개 회사 표본을 정규화한 파일
 - `data/firms.json`: 대시보드가 바로 읽는 기본 데이터
 - `data/valuation_inputs_template.csv`: 가치평가 입력 템플릿
+- `data/listed_fleet_counts.json`: 공식 공개자료로 확인한 상장 해운사 선대 수
+- `data/open_source_tools.json`: 가치평가·공시 수집에 쓸 오픈소스/GitHub 도구 목록
 
 ## 분류 기준
 
@@ -59,9 +61,11 @@ python3 -m http.server 4173
 - `EV/DWT = EV / DWT_Total`
 - `EV/Fleet = EV / Fleet_Total`
 
-## 전세계 선대 원장 입력
+## 선대 수 정확성 기준
 
-정확한 회사별 선종 수는 IMO 단위 선박 원장이 필요합니다. 공개 웹을 임의로 긁어 만드는 방식은 누락·중복·약관 문제가 생기므로 연구용 기준으로 쓰면 안 됩니다.
+대시보드는 먼저 공식 회사 웹사이트, 연차보고서, SEC filing 등에서 확인한 상장사 선대 수를 보여줍니다. 각 숫자는 기준일, 산정 기준, 출처 URL, 검증 상태를 같이 보관합니다.
+
+정확한 전세계 회사별 선종 수를 완성하려면 IMO 단위 선박 원장이 필요합니다. 공개 웹을 임의로 긁어 만드는 방식은 누락·중복·약관 문제가 생기므로 연구용 기준으로 쓰면 안 됩니다.
 
 권장 원천:
 
@@ -92,14 +96,19 @@ python3 -m http.server 4173
 
 대시보드는 `IMO`를 기준으로 중복을 제거한 뒤 회사별로 `탱커`, `벌크`, `가스`, `컨테이너`, `일반화물`, `오프쇼어`, `여객`, `기타` 척수를 집계합니다. 선종 카테고리 버튼을 누르면 해당 선종을 1척 이상 보유한 회사 목록만 표시됩니다.
 
-## 배포
+## 자료 보기
 
-정적 파일만 쓰므로 GitHub Pages, Netlify, Vercel, 사내 웹서버에 그대로 올릴 수 있습니다.
+- 상단 `입력 템플릿`, `선대 템플릿`, `분류 CSV`, `선대 요약`, `연구 노트` 버튼은 바로 다운로드하지 않고 앱 안에서 먼저 미리보기를 엽니다.
+- 미리보기 하단의 `다운로드`를 눌렀을 때만 파일로 저장됩니다.
+- 회사별 판정표의 `자료실` 버튼은 시장가격, SEC 공시, 선대 공식자료, IR 검색 링크를 보여줍니다.
+- `기업가치평가 데이터룸`에는 OpenBB, EdgarTools, sec-edgar-downloader, yfinance, Arelle 등 연구 자동화에 쓸 오픈소스 도구 링크가 들어 있습니다.
 
-```bash
-git init
-git add .
-git commit -m "Add shipping fleet classifier"
-```
+## 공유
 
-GitHub Pages를 쓰면 링크 하나로 다른 사람이 같은 화면을 볼 수 있습니다.
+터미널이 꺼져도 다른 사람이 볼 수 있게 하려면 GitHub Pages 링크를 공유합니다.
+
+- GitHub Pages: `https://jm7397776-byte.github.io/shipping-valuation-research-tool/`
+- 로컬 확인: `python3 -m http.server 4173`
+- 임시 비공개 확인: `SHIPPING_TOOL_PASSWORD=원하는비밀번호 python3 scripts/serve_private.py`
+
+GitHub Pages는 공개 링크입니다. 민감한 유료 원장이나 비공개 재무자료는 업로드하지 말고, 공개 가능한 공식 출처 기반 자료만 올립니다.

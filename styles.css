@@ -268,6 +268,59 @@ canvas {
   gap: 12px;
 }
 
+.research-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.85fr) minmax(360px, 1.15fr);
+  gap: 18px;
+}
+
+.research-grid h3 {
+  margin: 0 0 10px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.checklist-grid,
+.tool-list {
+  display: grid;
+  gap: 8px;
+}
+
+.check-item,
+.tool-item,
+.link-item {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  text-decoration: none;
+}
+
+.tool-item {
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.check-item strong,
+.tool-item strong,
+.link-item strong {
+  color: #17202a;
+  font-size: 13px;
+}
+
+.check-item span,
+.tool-item span,
+.link-item span,
+.tool-item em,
+.link-item em,
+.source-cell span {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
 .category-bar {
   display: flex;
   flex-wrap: wrap;
@@ -316,13 +369,13 @@ canvas {
 }
 
 .table-wrap.compact table {
-  min-width: 860px;
+  min-width: 1040px;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 980px;
+  min-width: 1120px;
 }
 
 th,
@@ -359,6 +412,27 @@ td.number {
 .reason-cell {
   color: var(--muted);
   font-size: 12px;
+}
+
+.source-cell a {
+  display: block;
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.source-cell span {
+  display: block;
+  margin-top: 3px;
+  white-space: nowrap;
+}
+
+.row-action {
+  min-height: 30px;
+  padding: 0 10px;
+  border-color: var(--line);
+  background: #fff;
+  color: #334155;
 }
 
 .badge {
@@ -402,9 +476,141 @@ td.number {
   }
 }
 
+.preview-modal[hidden] {
+  display: none;
+}
+
+.preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.modal-scrim {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: rgba(15, 23, 42, 0.58);
+  cursor: default;
+}
+
+.modal-panel {
+  position: relative;
+  width: min(1120px, 100%);
+  max-height: min(820px, calc(100svh - 48px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28);
+}
+
+.modal-head,
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-actions {
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+}
+
+.modal-head button,
+.modal-actions button,
+.modal-actions a {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  text-decoration: none;
+}
+
+.modal-actions button {
+  background: var(--dark);
+  color: #fff;
+}
+
+.preview-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+}
+
+.preview-body pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: keep-all;
+  color: #334155;
+  font: 13px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.preview-count {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.preview-table table {
+  min-width: 1080px;
+}
+
+.dataroom-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.dataroom-head strong {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: var(--dark);
+  color: #fff;
+  font-size: 12px;
+}
+
+.dataroom-head span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.link-list {
+  display: grid;
+  gap: 10px;
+}
+
+.link-item {
+  grid-template-columns: 160px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.link-item a {
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: none;
+}
+
 @media (max-width: 1080px) {
   .workspace,
-  .chart-grid {
+  .chart-grid,
+  .research-grid {
     grid-template-columns: 1fr;
   }
 
@@ -441,5 +647,14 @@ td.number {
   .panel-title {
     flex-direction: column;
     gap: 4px;
+  }
+
+  .tool-item,
+  .link-item {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-modal {
+    padding: 10px;
   }
 }

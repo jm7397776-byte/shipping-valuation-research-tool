@@ -21,8 +21,8 @@
           <input id="fileInput" type="file" accept=".csv,.json" />
           CSV 불러오기
         </label>
-        <a class="download-link" href="./data/valuation_inputs_template.csv" download>입력 템플릿</a>
-        <a class="download-link" href="./data/fleet_raw_template.csv" download>선대 템플릿</a>
+        <button id="previewValuationTemplate" type="button">입력 템플릿</button>
+        <button id="previewFleetTemplate" type="button">선대 템플릿</button>
         <button id="exportCsv" type="button">분류 CSV</button>
         <button id="exportFleet" type="button">선대 요약</button>
         <button id="exportBrief" type="button">연구 노트</button>
@@ -85,7 +85,7 @@
               <li>슬라이더로 주력 선종 기준을 조절합니다.</li>
               <li>전세계 선대 원장은 선대 템플릿 형식으로 불러옵니다.</li>
               <li>입력 템플릿에 재무값을 채운 뒤 CSV로 불러옵니다.</li>
-              <li>분류 CSV, 선대 요약, 연구 노트를 내려받아 공유합니다.</li>
+              <li>상단 버튼은 먼저 미리보기를 열고, 필요할 때만 내려받습니다.</li>
             </ol>
           </details>
         </aside>
@@ -119,10 +119,27 @@
             <div id="valuationGrid" class="valuation-grid"></div>
           </section>
 
+          <section class="panel research-panel">
+            <div class="panel-title">
+              <h2>기업가치평가 데이터룸</h2>
+              <span id="researchSummary">공식자료 링크와 오픈소스 수집 도구를 한 화면에서 확인합니다</span>
+            </div>
+            <div class="research-grid">
+              <div>
+                <h3>연구 체크리스트</h3>
+                <div id="researchChecklist" class="checklist-grid"></div>
+              </div>
+              <div>
+                <h3>오픈소스·깃허브 도구</h3>
+                <div id="openSourceTools" class="tool-list"></div>
+              </div>
+            </div>
+          </section>
+
           <section class="panel table-panel">
             <div class="panel-title">
               <h2>전세계 선대 집계</h2>
-              <span id="fleetSummaryLabel">IMO 단위 원장을 불러오면 회사별 선종 수가 계산됩니다</span>
+              <span id="fleetSummaryLabel">공식 출처 기반 상장사 선대 수를 먼저 보여줍니다</span>
             </div>
             <div id="fleetCategoryBar" class="category-bar"></div>
             <div class="table-wrap compact">
@@ -139,6 +156,7 @@
                     <th>오프쇼어</th>
                     <th>여객</th>
                     <th>기타</th>
+                    <th>출처</th>
                   </tr>
                 </thead>
                 <tbody id="fleetTable"></tbody>
@@ -163,6 +181,7 @@
                     <th>원분류</th>
                     <th>근거</th>
                     <th>EV/EBITDA</th>
+                    <th>자료</th>
                   </tr>
                 </thead>
                 <tbody id="firmTable"></tbody>
@@ -179,6 +198,24 @@
         <strong class="kpi-value"></strong>
       </div>
     </template>
+
+    <div id="previewModal" class="preview-modal" hidden>
+      <button class="modal-scrim" type="button" data-close-preview aria-label="닫기"></button>
+      <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Preview</p>
+            <h2 id="previewTitle">미리보기</h2>
+          </div>
+          <button type="button" data-close-preview>닫기</button>
+        </div>
+        <div id="previewBody" class="preview-body"></div>
+        <div class="modal-actions">
+          <a id="previewSourceLink" href="#" target="_blank" rel="noopener">원본 열기</a>
+          <button id="previewDownload" type="button">다운로드</button>
+        </div>
+      </section>
+    </div>
 
     <script src="./app.js"></script>
   </body>
