@@ -526,6 +526,58 @@ button.company-name-button > span {
   gap: 8px;
 }
 
+.reliability-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reliability-strip span {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.filing-chip-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.filing-chip {
+  min-height: 58px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  text-decoration: none;
+}
+
+.filing-chip strong,
+.filing-chip span {
+  display: block;
+  font-size: 12px;
+}
+
+.filing-chip strong {
+  color: var(--accent);
+}
+
+.filing-chip span {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .company-link-list {
   display: grid;
   gap: 8px;
@@ -1222,6 +1274,7 @@ td.number {
   .variable-row,
   .fleet-count-grid,
   .company-metric-grid,
+  .filing-chip-row,
   .mini-button-grid,
   .company-link-row,
   .analysis-result-grid,

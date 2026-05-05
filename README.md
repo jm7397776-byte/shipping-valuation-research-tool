@@ -42,6 +42,8 @@ python3 -m http.server 4173
 
 `data/valuation_inputs_template.csv`에 아래 필드를 채우고 화면의 `CSV 불러오기`로 넣으면 됩니다.
 
+기본 화면에 보이는 `data/valuation_inputs_generated.json` 값은 yfinance 공개 시장 스냅샷입니다. 빠른 분석과 화면 확인용이며, 논문 최종 표본에서는 회사의 20-F, 10-K, 연차보고서, 감사보고서 원문에서 확인한 값으로 덮어쓰는 것이 원칙입니다.
+
 - `RIC`
 - `Fiscal_Year`
 - `Currency`
@@ -111,6 +113,7 @@ python3 -m http.server 4173
 - 상단 `입력 템플릿`, `선대 템플릿`, `분류 CSV`, `선대 요약`, `연구 노트` 버튼은 바로 다운로드하지 않고 앱 안에서 먼저 미리보기를 엽니다.
 - 미리보기 하단의 `다운로드`를 눌렀을 때만 파일로 저장됩니다.
 - 회사별 판정표의 `자료실` 버튼은 시장가격, SEC 공시, 선대 공식자료, IR 검색 링크를 보여줍니다.
+- 회사 대시보드의 `기업가치분석` 영역에는 SEC/EDGAR, IR/Annual Report, Yahoo 원천 링크와 재무값 신뢰도 상태가 바로 표시됩니다.
 - `기업가치평가 데이터룸`에는 OpenBB, EdgarTools, sec-edgar-downloader, yfinance, Arelle 등 연구 자동화에 쓸 오픈소스 도구 링크가 들어 있습니다.
 - `기업가치평가 데이터룸`의 체크리스트 카드를 누르면 바로 아래 실행 패널에 필요한 자료, 현재 계산값, 선택 회사 기준 다음 행동이 표시됩니다.
 - `논문 작성 도우미`는 데이터 완성도, 추천 연구 주제, 가설, 종속·설명변수, 분석 방법, OpenAlex/Crossref/Semantic Scholar 문헌검색 링크와 실제 계산 결과를 함께 보여줍니다.

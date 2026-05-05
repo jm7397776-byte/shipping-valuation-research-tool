@@ -1702,6 +1702,7 @@ function companyLinks(entry) {
   const ric = entry?.RIC ?? "";
   const fleet = entry?.fleet ?? null;
   const yahoo = ricToYahoo(ric);
+  const secSearch = `https://www.sec.gov/edgar/search/#/q=${encodeURIComponent(name)}`;
   return [
     {
       label: "시장가격",
@@ -1710,8 +1711,10 @@ function companyLinks(entry) {
     },
     {
       label: "SEC 감사보고서/공시",
-      value: isUsListedRic(ric) ? "EDGAR 20-F/10-K 검색" : "비미국 상장사는 거래소/IR 확인",
-      url: isUsListedRic(ric) ? `https://www.sec.gov/edgar/search/#/q=${encodeURIComponent(name)}` : "",
+      value: isUsListedRic(ric)
+        ? "EDGAR 20-F/10-K/10-Q 검색"
+        : "SEC에 없을 수 있음 · 그래도 EDGAR 이름 검색",
+      url: secSearch,
     },
     {
       label: "선대 공식자료",
@@ -1724,6 +1727,49 @@ function companyLinks(entry) {
       url: `https://www.google.com/search?q=${encodeURIComponent(`${name} investor relations annual report fleet`)}`,
     },
   ];
+}
+
+function companyFilingLinks(entry) {
+  const name = entry?.Company_Name ?? "";
+  const ric = entry?.RIC ?? "";
+  const yahoo = ricToYahoo(ric);
+  return [
+    {
+      label: "SEC/EDGAR",
+      status: isUsListedRic(ric) ? "미국 공시 검색" : "비미국사는 없을 수 있음",
+      url: `https://www.sec.gov/edgar/search/#/q=${encodeURIComponent(name)}`,
+    },
+    {
+      label: "IR/Annual Report",
+      status: "회사 공시 원문 검색",
+      url: `https://www.google.com/search?q=${encodeURIComponent(`${name} annual report investor relations financial statements`)}`,
+    },
+    {
+      label: "Yahoo 원천",
+      status: yahoo ? `현재 스냅샷 ${yahoo}` : "RIC 변환 필요",
+      url: yahoo ? `https://finance.yahoo.com/quote/${encodeURIComponent(yahoo)}` : "",
+    },
+  ];
+}
+
+function financeReliability(entry) {
+  const valuation = valuationForEntry(entry);
+  const finance = valuation.finance;
+  const fleet = entry?.fleet ?? null;
+  const isSnapshot = /yahoo finance|public snapshot|yfinance/i.test(
+    `${finance?.Source ?? ""} ${finance?.Fiscal_Year ?? ""} ${finance?.Notes ?? ""}`,
+  );
+  const financeStatus = !finance
+    ? "재무값 없음"
+    : isSnapshot
+      ? "시장 스냅샷 · 논문 최종값은 공시 원문으로 교체"
+      : "사용자 입력 재무값";
+  const fleetStatus = fleet?.Source_Status === "verified" ? "선대 verified" : fleet?.Source_Status ? `선대 ${fleet.Source_Status}` : "선대 미확인";
+  return {
+    financeStatus,
+    fleetStatus,
+    sourceDate: finance?.Source_Date ?? "",
+  };
 }
 
 function valuationItems(entry) {
@@ -1823,6 +1869,7 @@ function renderCompanyDashboard() {
   const fleet = entry.fleet;
   const valuation = valuationForEntry(entry);
   const finance = valuation.finance;
+  const reliability = financeReliability(entry);
   $("selectedCompanyName").textContent = entry.Company_Name;
   $("selectedCompanySubtitle").textContent = `${entry.RIC || "RIC 미확인"} · ${firm?.Decision_Label ?? "공식 선대자료"} · ${fleet?.Basis ?? "선대 기준 확인 필요"}`;
   $("selectedCompanyStatus").textContent = fleet?.Source_Status
@@ -1864,6 +1911,16 @@ function renderCompanyDashboard() {
       `,
     )
     .join("");
+  const filingQuickLinksHtml = companyFilingLinks(entry)
+    .map(
+      (link) => `
+        <a class="filing-chip" href="${escapeHtml(link.url)}" target="_blank" rel="noopener">
+          <strong>${escapeHtml(link.label)}</strong>
+          <span>${escapeHtml(link.status)}</span>
+        </a>
+      `,
+    )
+    .join("");
 
   $("companyDashboard").innerHTML = `
     <div class="company-summary-grid">
@@ -1893,10 +1950,16 @@ function renderCompanyDashboard() {
     <div class="company-detail-grid">
       <section>
         <h3>기업가치분석</h3>
+        <div class="reliability-strip">
+          <span>${escapeHtml(reliability.financeStatus)}</span>
+          <span>${escapeHtml(reliability.fleetStatus)}</span>
+          <span>${escapeHtml(reliability.sourceDate || "기준일 확인 필요")}</span>
+        </div>
         <div class="company-metric-grid">${valuationHtml}</div>
+        <div class="filing-chip-row">${filingQuickLinksHtml}</div>
         <p class="helper-text">${
           finance
-            ? escapeHtml(`${finance.Fiscal_Year || "회계연도 미기재"} 재무 입력 반영 · ${finance.Source || "출처 미기재"}`)
+            ? escapeHtml(`${finance.Fiscal_Year || "회계연도 미기재"} 재무 입력 반영 · ${finance.Source || "출처 미기재"} · 감사보고서 확정값은 공시 원문 확인 필요`)
             : "재무 CSV를 넣으면 EV/EBITDA, P/B, EV/DWT, EV/Fleet이 회사별로 바로 계산됩니다."
         }</p>
       </section>
