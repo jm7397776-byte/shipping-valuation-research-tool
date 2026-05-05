@@ -241,6 +241,107 @@ input[type="range"] {
   gap: 18px;
 }
 
+.research-cockpit {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.95fr) minmax(420px, 1.15fr);
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid rgba(17, 24, 39, 0.06);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.cockpit-main {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+
+.cockpit-main span,
+.cockpit-grid span,
+.cockpit-actions span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.cockpit-main strong {
+  color: #17202a;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.cockpit-main p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.cockpit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cockpit-grid div {
+  min-height: 96px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.cockpit-grid strong,
+.cockpit-grid em {
+  display: block;
+}
+
+.cockpit-grid strong {
+  margin-top: 6px;
+  color: #17202a;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.cockpit-grid em {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.4;
+}
+
+.cockpit-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.cockpit-actions span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #f8fafc;
+}
+
+.cockpit-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #fff;
+}
+
 .panel {
   border-radius: 8px;
   padding: 18px;
@@ -864,6 +965,28 @@ button.company-name-button > span {
   gap: 8px;
 }
 
+.analysis-interpretation {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #99f6e4;
+  border-radius: 8px;
+  background: #ecfdf5;
+}
+
+.analysis-interpretation strong {
+  color: #0f766e;
+  font-size: 12px;
+}
+
+.analysis-interpretation p {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.55;
+  word-break: keep-all;
+}
+
 .analysis-table-wrap {
   overflow: auto;
   border: 1px solid var(--line);
@@ -1006,6 +1129,54 @@ button.company-name-button > span {
 .workflow-step-grid span {
   margin-top: 5px;
   color: var(--muted);
+  line-height: 1.45;
+}
+
+.improvement-block {
+  margin-top: 16px;
+}
+
+.improvement-block h3 {
+  margin: 0 0 10px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.improvement-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.improvement-item {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-height: 138px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.improvement-item span,
+.improvement-item em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.improvement-item strong {
+  color: #17202a;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.improvement-item p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -1321,6 +1492,7 @@ td.number {
 @media (max-width: 1080px) {
   .workspace,
   .chart-grid,
+  .research-cockpit,
   .research-grid,
   .thesis-grid,
   .company-summary-grid,
@@ -1337,6 +1509,8 @@ td.number {
   .quality-grid,
   .analysis-result-grid,
   .analysis-method-tabs,
+  .cockpit-grid,
+  .improvement-list,
   .fleet-count-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1368,6 +1542,8 @@ td.number {
   .company-link-row,
   .analysis-result-grid,
   .analysis-method-tabs,
+  .cockpit-grid,
+  .improvement-list,
   .analysis-test-row,
   .workflow-step-grid {
     grid-template-columns: 1fr;

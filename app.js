@@ -126,6 +126,39 @@ const ANALYSIS_METHODS = [
   },
 ];
 
+const IMPROVEMENT_ROADMAP = [
+  {
+    label: "공시 재무값 자동 확정",
+    text: "미국 상장사는 SEC XBRL에서 매출·EBITDA·부채·현금을 구조화하고, 비미국사는 IR 원문 링크를 표본별로 고정합니다.",
+    tools: "EdgarTools, Arelle, sec-edgar-downloader",
+    priority: "1순위",
+  },
+  {
+    label: "대용량 선대 원장 분석",
+    text: "Clarksons/Kpler 등 IMO 단위 CSV를 받으면 브라우저에서 SQL로 회사·선종·DWT를 집계합니다.",
+    tools: "DuckDB-Wasm, Arquero",
+    priority: "2순위",
+  },
+  {
+    label: "통계 검정 정밀화",
+    text: "현재 브라우저 근사값을 라이브러리 기반 검정으로 교체하고 논문 표와 같은 값을 재현합니다.",
+    tools: "jStat, simple-statistics, Pyodide/SciPy",
+    priority: "3순위",
+  },
+  {
+    label: "논문 도표 자동 생성",
+    text: "EV/EBITDA 박스플롯, 민감도 차트, 선대 규모 회귀 산점도를 바로 그림으로 뽑습니다.",
+    tools: "Apache ECharts, Observable Plot",
+    priority: "4순위",
+  },
+  {
+    label: "운임 사이클 패널 회귀",
+    text: "BDI, 탱커 운임지수, 주가수익률 CSV를 업로드하면 월별 패널 회귀와 구간 분석을 실행합니다.",
+    tools: "DuckDB-Wasm, Danfo.js",
+    priority: "5순위",
+  },
+];
+
 const $ = (id) => document.getElementById(id);
 
 function parseNumber(value) {
@@ -564,6 +597,105 @@ function renderValuation(rows) {
     .join("");
 }
 
+function methodKeyResult(rows) {
+  const tanker = rowsByGroup(rows, "Tanker core");
+  const bulk = rowsByGroup(rows, "Dry bulk core");
+  const tankerEbitda = metricValues(tanker, "EV_EBITDA");
+  const bulkEbitda = metricValues(bulk, "EV_EBITDA");
+  const tankerMedian = median(tankerEbitda);
+  const bulkMedian = median(bulkEbitda);
+  const pValue = permutationPValue(tankerEbitda, bulkEbitda);
+  if (state.activeAnalysisMethod === "tests") {
+    return `EV/EBITDA 그룹 차이 permutation p-value ${fmtP(pValue)} · 탱커 ${fmtMultiple(tankerMedian)}, 벌커 ${fmtMultiple(bulkMedian)}`;
+  }
+  if (state.activeAnalysisMethod === "sensitivity") {
+    return "60/70/80% 기준별 표본 수와 EV/EBITDA 중앙값을 비교 중";
+  }
+  if (state.activeAnalysisMethod === "robustness") {
+    return "전체 표본과 verified 표본을 분리해 결과 유지 여부를 확인 중";
+  }
+  if (state.activeAnalysisMethod === "asset") {
+    const regression = linearRegression(rows.map((row) => row.fleetTotal), rows.map((row) => row.valuation.EV_Fleet));
+    return `Fleet_Total vs EV/Fleet 단순회귀 표본 ${regression?.n ?? 0}개 · R² ${fmtNumber(regression?.r2, 2)}`;
+  }
+  if (state.activeAnalysisMethod === "disclosure") {
+    const verified = rows.filter((row) => row.sourceStatus === "verified").length;
+    return `공시/선대 verified ${verified}개와 review/missing ${rows.length - verified}개 비교`;
+  }
+  return `EV/EBITDA 중앙값: 탱커 ${fmtMultiple(tankerMedian)} / 벌커 ${fmtMultiple(bulkMedian)} · 차이 ${fmtMultiple(Number.isFinite(tankerMedian) && Number.isFinite(bulkMedian) ? tankerMedian - bulkMedian : null)}`;
+}
+
+function methodInterpretation(rows) {
+  const result = methodKeyResult(rows);
+  const warning = "현재 재무값은 일부 yfinance 스냅샷이므로 최종 논문 표에는 감사보고서·연차보고서 확인값으로 교체해야 합니다.";
+  if (state.activeAnalysisMethod === "tests") {
+    return `${result}. p-value가 낮은 지표는 주력 선종별 밸류에이션 차이 후보로 해석하고, ${warning}`;
+  }
+  if (state.activeAnalysisMethod === "sensitivity") {
+    return `${result}. 기준을 바꿔도 방향이 유지되는지 확인해 연구 결과의 강건성을 설명할 수 있습니다. ${warning}`;
+  }
+  if (state.activeAnalysisMethod === "robustness") {
+    return `${result}. verified 표본에서도 결론이 유지되면 공개자료 기반 연구의 신뢰도를 더 강하게 주장할 수 있습니다. ${warning}`;
+  }
+  if (state.activeAnalysisMethod === "asset") {
+    return `${result}. 선대 규모가 멀티플 프리미엄을 설명하는지 보는 보조 검정으로 사용합니다. ${warning}`;
+  }
+  if (state.activeAnalysisMethod === "disclosure") {
+    return `${result}. 출처 품질 차이가 결론에 미치는 편향을 논문 한계와 강건성 검정에 연결합니다. ${warning}`;
+  }
+  return `${result}. 이 값은 주력 선종별 peer multiple 차이를 보여주는 1차 결과로 쓸 수 있습니다. ${warning}`;
+}
+
+function renderResearchCockpit() {
+  const rows = analysisDataset();
+  const quality = dataQualityMetrics();
+  const topic = selectedTopic();
+  const entry = selectedCompany();
+  const method = analysisMethodLabel(state.activeAnalysisMethod);
+  const result = rows.length ? methodKeyResult(rows) : "재무 입력을 넣으면 결과가 계산됩니다";
+  const nextActions = [
+    "기업가치분석의 SEC/IR 링크로 핵심 회사 재무값 검증",
+    "Source_Status review 회사는 부록 표본으로 분리",
+    topic?.id === "cycle_sensitivity"
+      ? "BDI·탱커운임·주가수익률 CSV를 추가해 패널 회귀 확장"
+      : "분석 결과 표를 논문 패키지로 저장",
+  ];
+  $("researchCockpit").innerHTML = `
+    <div class="cockpit-main">
+      <span>현재 연구 질문</span>
+      <strong>${escapeHtml(topic?.title ?? "연구 주제 선택")}</strong>
+      <p>${escapeHtml(topic?.question ?? "")}</p>
+    </div>
+    <div class="cockpit-grid">
+      <div>
+        <span>실행 분석</span>
+        <strong>${escapeHtml(method)}</strong>
+        <em>${escapeHtml(result)}</em>
+      </div>
+      <div>
+        <span>데이터 상태</span>
+        <strong>${fmtNumber(quality.vesselCount)}척 · 재무 ${quality.financeCoverage}개</strong>
+        <em>verified ${quality.verified}개 · review ${quality.review}개</em>
+      </div>
+      <div>
+        <span>선택 회사</span>
+        <strong>${escapeHtml(entry?.Company_Name ?? "회사 미선택")}</strong>
+        <em>${escapeHtml(entry ? fleetListMeta(entry) : "왼쪽 목록에서 회사를 선택하세요")}</em>
+      </div>
+    </div>
+    <div class="cockpit-actions">
+      ${nextActions.map((text) => `<span>${escapeHtml(text)}</span>`).join("")}
+      <button type="button" data-scroll-target="#actualAnalysis">분석 결과 보기</button>
+      <button type="button" data-scroll-target=".research-panel">자료·도구 보기</button>
+    </div>
+  `;
+  document.querySelectorAll("[data-scroll-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelector(button.dataset.scrollTarget)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  });
+}
+
 function buildRawFleetSummary() {
   const byCompany = new Map();
   const seen = new Set();
@@ -985,6 +1117,7 @@ function render() {
   const rows = filteredRows();
   renderDirectoryWorkflow();
   renderKpis(rows);
+  renderResearchCockpit();
   renderCompanyDashboard();
   renderValuation(rows);
   renderFleetSummary();
@@ -1212,6 +1345,17 @@ function renderResearchTools() {
       `,
     )
     .join("");
+
+  $("improvementRoadmap").innerHTML = IMPROVEMENT_ROADMAP.map(
+    (item) => `
+      <div class="improvement-item">
+        <span>${escapeHtml(item.priority)}</span>
+        <strong>${escapeHtml(item.label)}</strong>
+        <p>${escapeHtml(item.text)}</p>
+        <em>${escapeHtml(item.tools)}</em>
+      </div>
+    `,
+  ).join("");
 
   renderWorkflowDetail();
 }
@@ -1725,6 +1869,10 @@ function renderActualAnalysis(topic) {
     </div>
     <div class="analysis-execution">
       ${renderSelectedMethod(rows)}
+    </div>
+    <div class="analysis-interpretation">
+      <strong>논문용 해석 초안</strong>
+      <p>${escapeHtml(methodInterpretation(rows))}</p>
     </div>
     <div class="analysis-result-grid">
       ${renderMetricResult("탱커 EV/EBITDA", tanker.map((row) => row.valuation.EV_EBITDA))}
