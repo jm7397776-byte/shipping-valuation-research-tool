@@ -1290,6 +1290,10 @@ function methodIdForText(text) {
   return "median";
 }
 
+function analysisMethodLabel(id) {
+  return ANALYSIS_METHODS.find((method) => method.id === id)?.label ?? "중앙값 비교";
+}
+
 function researchSearchLinks(topic) {
   const query = topic?.literature_query ?? "shipping company valuation tanker dry bulk";
   const encoded = encodeURIComponent(query);
@@ -1822,8 +1826,9 @@ function renderThesisAssistant() {
     .map((text) => {
       const methodId = methodIdForText(text);
       return `
-        <button type="button" class="method-item method-action ${methodId === state.activeAnalysisMethod ? "active" : ""}" data-analysis-method="${escapeHtml(methodId)}">
-          ${escapeHtml(text)}
+        <button type="button" class="method-item method-action" data-analysis-method="${escapeHtml(methodId)}">
+          <span>${escapeHtml(text)}</span>
+          <em>실행: ${escapeHtml(analysisMethodLabel(methodId))}</em>
         </button>
       `;
     })

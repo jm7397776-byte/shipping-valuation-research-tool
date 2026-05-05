@@ -736,14 +736,22 @@ button.company-name-button > span {
 .method-action {
   width: 100%;
   min-height: 0;
+  display: grid;
+  gap: 5px;
   color: #334155;
   text-align: left;
 }
 
-.method-action.active {
-  border-color: #0f766e;
-  background: #ecfdf5;
-  color: #17202a;
+.method-action span,
+.method-action em {
+  display: block;
+}
+
+.method-action em {
+  color: #0f766e;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
 }
 
 .variable-row {

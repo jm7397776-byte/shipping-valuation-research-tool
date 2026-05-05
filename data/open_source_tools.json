@@ -112,5 +112,35 @@
     "stage": "브라우저 데이터프레임",
     "use_case": "CSV 표본을 groupby, aggregate, filter로 처리해 연구용 패널 데이터를 구성",
     "url": "https://github.com/uwdata/arquero"
+  },
+  {
+    "name": "DuckDB-Wasm",
+    "stage": "대용량 CSV·Parquet 로컬 분석",
+    "use_case": "브라우저 안에서 SQL로 선대 원장, 재무 CSV, 운임 시계열을 조인하고 집계",
+    "url": "https://github.com/duckdb/duckdb-wasm"
+  },
+  {
+    "name": "Apache ECharts",
+    "stage": "인터랙티브 차트",
+    "use_case": "민감도 분석, peer multiple, 선종별 분포를 확대·툴팁·범례가 있는 차트로 시각화",
+    "url": "https://github.com/apache/echarts"
+  },
+  {
+    "name": "Observable Plot",
+    "stage": "탐색적 데이터 시각화",
+    "use_case": "회귀 산점도, 박스플롯, 분포 그래프를 논문 도표에 가깝게 빠르게 작성",
+    "url": "https://observablehq.github.io/plot/"
+  },
+  {
+    "name": "Danfo.js",
+    "stage": "브라우저 pandas",
+    "use_case": "CSV/JSON 표본을 DataFrame으로 다루며 결측률, 그룹 집계, 표본 필터링을 확장",
+    "url": "https://github.com/javascriptdata/danfojs"
+  },
+  {
+    "name": "EdgarTools MCP",
+    "stage": "SEC 공시 AI 도구화",
+    "use_case": "SEC filing, financial statement, company disclosure를 AI assistant가 구조화 조회",
+    "url": "https://www.edgartools.io/edgartools-mcp-for-sec-filings/"
   }
 ]
