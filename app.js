@@ -1,6 +1,8 @@
 const state = {
   firms: [],
   finance: new Map(),
+  fleetRecords: [],
+  fleetCategory: "All",
   thresholds: {
     tanker: 60,
     bulk: 70,
@@ -23,6 +25,18 @@ const GROUP_LABEL = {
   "Mixed / review": "혼합·검토",
   Excluded: "제외",
 };
+
+const FLEET_CATEGORIES = [
+  ["All", "전체"],
+  ["Dry bulk", "벌크선"],
+  ["Tanker", "탱커선"],
+  ["Container", "컨테이너선"],
+  ["Gas carrier", "가스선"],
+  ["General cargo", "일반화물선"],
+  ["Offshore", "오프쇼어"],
+  ["Passenger", "여객선"],
+  ["Other", "기타"],
+];
 
 const $ = (id) => document.getElementById(id);
 
@@ -96,6 +110,54 @@ function normalizeFinance(row) {
     Source_Date: row.Source_Date ?? "",
     Notes: row.Notes ?? "",
   };
+}
+
+function normalizeFleetRecord(row) {
+  const company =
+    row.Company_Name ??
+    row.Company ??
+    row.Operator ??
+    row.Owner ??
+    row.Registered_Owner ??
+    row.Beneficial_Owner ??
+    "";
+  const shipType = row.Ship_Type ?? row.Vessel_Type ?? row.Type ?? row.ShipType ?? "";
+  if (!company || !shipType) return null;
+  return {
+    Company_Name: String(company).trim(),
+    RIC: row.RIC ?? row.Ticker ?? "",
+    IMO: String(row.IMO ?? row.IMO_Number ?? "").trim(),
+    Vessel_Name: String(row.Vessel_Name ?? row.Ship_Name ?? row.Name ?? "").trim(),
+    Ship_Type: String(shipType).trim(),
+    Ship_Type_Detail: String(row.Ship_Type_Detail ?? row.Type_Detail ?? "").trim(),
+    Major_Type: majorShipType(shipType),
+    DWT: parseNumber(row.DWT),
+    GT: parseNumber(row.GT),
+    Flag: row.Flag ?? "",
+    Source: row.Source ?? "",
+    Source_Date: row.Source_Date ?? "",
+  };
+}
+
+function majorShipType(shipType) {
+  const text = String(shipType).toLowerCase();
+  if (text.includes("bulk") || text.includes("bulker")) return "Dry bulk";
+  if (text.includes("lng") || text.includes("lpg") || text.includes("gas")) return "Gas carrier";
+  if (
+    text.includes("tanker") ||
+    text.includes("oil") ||
+    text.includes("chemical") ||
+    text.includes("product")
+  ) {
+    return "Tanker";
+  }
+  if (text.includes("container")) return "Container";
+  if (text.includes("general cargo") || text.includes("multi-purpose") || text.includes("multipurpose")) {
+    return "General cargo";
+  }
+  if (text.includes("offshore") || text.includes("supply") || text.includes("platform")) return "Offshore";
+  if (text.includes("passenger") || text.includes("ferry") || text.includes("cruise")) return "Passenger";
+  return "Other";
 }
 
 function classify(firm) {
@@ -268,6 +330,112 @@ function renderValuation(rows) {
     .join("");
 }
 
+function buildFleetSummary() {
+  const byCompany = new Map();
+  const seen = new Set();
+
+  state.fleetRecords.forEach((record) => {
+    const dedupeKey = record.IMO
+      ? `${record.Company_Name}|${record.IMO}`
+      : `${record.Company_Name}|${record.Vessel_Name}|${record.Ship_Type}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+
+    if (!byCompany.has(record.Company_Name)) {
+      byCompany.set(record.Company_Name, {
+        Company_Name: record.Company_Name,
+        RIC: record.RIC,
+        Total: 0,
+        Tanker: 0,
+        "Dry bulk": 0,
+        Container: 0,
+        "Gas carrier": 0,
+        "General cargo": 0,
+        Offshore: 0,
+        Passenger: 0,
+        Other: 0,
+        ExactTypes: new Map(),
+      });
+    }
+    const item = byCompany.get(record.Company_Name);
+    item.Total += 1;
+    item[record.Major_Type] += 1;
+    item.ExactTypes.set(record.Ship_Type, (item.ExactTypes.get(record.Ship_Type) ?? 0) + 1);
+  });
+
+  return Array.from(byCompany.values()).sort((a, b) => b.Total - a.Total || a.Company_Name.localeCompare(b.Company_Name));
+}
+
+function renderFleetSummary() {
+  const summary = buildFleetSummary();
+  const vesselCount = summary.reduce((sum, row) => sum + row.Total, 0);
+  $("fleetStatus").textContent = `전세계 선대 원장 ${vesselCount}척 · 회사 ${summary.length}개`;
+  $("fleetSummaryLabel").textContent = state.fleetRecords.length
+    ? `${vesselCount}척 집계 · ${FLEET_CATEGORIES.find(([key]) => key === state.fleetCategory)?.[1] ?? "전체"} 기준`
+    : "IMO 단위 원장을 불러오면 회사별 선종 수가 계산됩니다";
+
+  const totals = Object.fromEntries(FLEET_CATEGORIES.map(([key]) => [key, 0]));
+  summary.forEach((row) => {
+    FLEET_CATEGORIES.forEach(([key]) => {
+      if (key === "All") return;
+      totals[key] += row[key] ?? 0;
+    });
+  });
+  totals.All = vesselCount;
+
+  $("fleetCategoryBar").innerHTML = FLEET_CATEGORIES.map(
+    ([key, label]) => `
+      <button type="button" class="${state.fleetCategory === key ? "active" : ""}" data-fleet-category="${key}">
+        ${label} ${fmtNumber(totals[key] ?? 0)}
+      </button>
+    `,
+  ).join("");
+
+  document.querySelectorAll("[data-fleet-category]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.fleetCategory = button.dataset.fleetCategory;
+      render();
+    });
+  });
+
+  const filtered =
+    state.fleetCategory === "All"
+      ? summary
+      : summary.filter((row) => (row[state.fleetCategory] ?? 0) > 0).sort((a, b) => {
+          const selectedDiff = (b[state.fleetCategory] ?? 0) - (a[state.fleetCategory] ?? 0);
+          return selectedDiff || b.Total - a.Total;
+        });
+
+  if (!state.fleetRecords.length) {
+    $("fleetTable").innerHTML = `
+      <tr>
+        <td colspan="10" class="reason-cell">선대 템플릿에 IMO 단위 데이터를 넣고 CSV 불러오기를 누르면 회사별 선종 수가 표시됩니다.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  $("fleetTable").innerHTML = filtered
+    .slice(0, 200)
+    .map(
+      (row) => `
+      <tr>
+        <td class="company-cell"><strong>${escapeHtml(row.Company_Name)}</strong><span>${escapeHtml(row.RIC ?? "")}</span></td>
+        <td class="number">${fmtNumber(row.Total)}</td>
+        <td class="number">${fmtNumber(row.Tanker)}</td>
+        <td class="number">${fmtNumber(row["Dry bulk"])}</td>
+        <td class="number">${fmtNumber(row["Gas carrier"])}</td>
+        <td class="number">${fmtNumber(row.Container)}</td>
+        <td class="number">${fmtNumber(row["General cargo"])}</td>
+        <td class="number">${fmtNumber(row.Offshore)}</td>
+        <td class="number">${fmtNumber(row.Passenger)}</td>
+        <td class="number">${fmtNumber(row.Other)}</td>
+      </tr>
+    `,
+    )
+    .join("");
+}
+
 function badgeClass(group) {
   if (group === "Tanker core") return "tanker";
   if (group === "Dry bulk core") return "bulk";
@@ -420,6 +588,7 @@ function render() {
   const rows = filteredRows();
   renderKpis(rows);
   renderValuation(rows);
+  renderFleetSummary();
   renderTable(rows);
   drawComposition(rows);
   drawScatter(rows);
@@ -509,9 +678,36 @@ function exportClassification() {
   download("shipping_fleet_classification.csv", toCsv(rows));
 }
 
+function exportFleetSummary() {
+  const summary = buildFleetSummary().map((row) => ({
+    Company_Name: row.Company_Name,
+    RIC: row.RIC,
+    Total: row.Total,
+    Tanker: row.Tanker,
+    Dry_Bulk: row["Dry bulk"],
+    Gas_Carrier: row["Gas carrier"],
+    Container: row.Container,
+    General_Cargo: row["General cargo"],
+    Offshore: row.Offshore,
+    Passenger: row.Passenger,
+    Other: row.Other,
+    Exact_Ship_Types: Array.from(row.ExactTypes.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, count]) => `${type}:${count}`)
+      .join("; "),
+  }));
+  if (!summary.length) {
+    download("shipping_fleet_summary.csv", "Company_Name,Total,Tanker,Dry_Bulk,Container\n");
+    return;
+  }
+  download("shipping_fleet_summary.csv", toCsv(summary));
+}
+
 function exportBrief() {
   const all = state.firms.map(attachComputed);
   const counts = groupCounts(all);
+  const fleetSummary = buildFleetSummary();
+  const fleetVesselCount = fleetSummary.reduce((sum, row) => sum + row.Total, 0);
   const lines = [
     "# 탱커 vs 벌커 상장사 표본 분류 노트",
     "",
@@ -520,6 +716,8 @@ function exportBrief() {
     `- 벌커 주력: ${counts["Dry bulk core"]}`,
     `- 혼합·검토: ${counts["Mixed / review"]}`,
     `- 제외: ${counts.Excluded}`,
+    `- IMO 원장 집계 선박 수: ${fleetVesselCount}`,
+    `- IMO 원장 집계 회사 수: ${fleetSummary.length}`,
     "",
     "## 현재 판정 기준",
     "",
@@ -542,11 +740,17 @@ async function handleFile(event) {
   const text = await file.text();
   const rows = file.name.endsWith(".json") ? JSON.parse(text) : parseCsv(text);
   const headers = Object.keys(rows[0] ?? {});
+  const isFleet = headers.some((h) =>
+    ["IMO", "IMO_Number", "Ship_Type", "Vessel_Type", "ShipType"].includes(h),
+  );
   const isFinance = headers.some((h) =>
     ["Market_Cap", "Enterprise_Value", "EBITDA", "Revenue", "Book_Equity"].includes(h),
   );
 
-  if (isFinance) {
+  if (isFleet) {
+    state.fleetRecords = rows.map(normalizeFleetRecord).filter(Boolean);
+    state.fleetCategory = "All";
+  } else if (isFinance) {
     rows.map(normalizeFinance).forEach((row) => {
       if (row) state.finance.set(row.RIC, row);
     });
@@ -584,6 +788,7 @@ async function init() {
   });
   $("fileInput").addEventListener("change", handleFile);
   $("exportCsv").addEventListener("click", exportClassification);
+  $("exportFleet").addEventListener("click", exportFleetSummary);
   $("exportBrief").addEventListener("click", exportBrief);
   window.addEventListener("resize", render);
   render();

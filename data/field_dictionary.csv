@@ -27,3 +27,11 @@ DWT_Total,No,Total fleet DWT
 Source,No,Data source name or URL
 Source_Date,No,Source as-of date
 Notes,No,Audit notes
+IMO,Yes for fleet ledger,IMO ship identifier; used to de-duplicate vessel counts
+Vessel_Name,No,Vessel name
+Ship_Type,Yes for fleet ledger,Raw vessel type from fleet data provider
+Ship_Type_Detail,No,More granular ship type or size class
+Capacity,No,TEU/CBM/passenger capacity where applicable
+DWT,No,Deadweight tonnage
+GT,No,Gross tonnage
+Flag,No,Flag state

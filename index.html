@@ -22,7 +22,9 @@
           CSV 불러오기
         </label>
         <a class="download-link" href="./data/valuation_inputs_template.csv" download>입력 템플릿</a>
+        <a class="download-link" href="./data/fleet_raw_template.csv" download>선대 템플릿</a>
         <button id="exportCsv" type="button">분류 CSV</button>
+        <button id="exportFleet" type="button">선대 요약</button>
         <button id="exportBrief" type="button">연구 노트</button>
       </div>
     </header>
@@ -73,6 +75,7 @@
           <div class="status-block">
             <span id="dataStatus">표본 55개 로드</span>
             <span id="financeStatus">가치평가 입력 0개</span>
+            <span id="fleetStatus">전세계 선대 원장 0척</span>
           </div>
 
           <details class="guide" open>
@@ -80,8 +83,9 @@
             <ol>
               <li>기본 표본은 자동으로 열립니다.</li>
               <li>슬라이더로 주력 선종 기준을 조절합니다.</li>
+              <li>전세계 선대 원장은 선대 템플릿 형식으로 불러옵니다.</li>
               <li>입력 템플릿에 재무값을 채운 뒤 CSV로 불러옵니다.</li>
-              <li>분류 CSV 또는 연구 노트를 내려받아 공유합니다.</li>
+              <li>분류 CSV, 선대 요약, 연구 노트를 내려받아 공유합니다.</li>
             </ol>
           </details>
         </aside>
@@ -113,6 +117,33 @@
               <span id="valuationSummary">재무 CSV를 불러오면 멀티플이 계산됩니다</span>
             </div>
             <div id="valuationGrid" class="valuation-grid"></div>
+          </section>
+
+          <section class="panel table-panel">
+            <div class="panel-title">
+              <h2>전세계 선대 집계</h2>
+              <span id="fleetSummaryLabel">IMO 단위 원장을 불러오면 회사별 선종 수가 계산됩니다</span>
+            </div>
+            <div id="fleetCategoryBar" class="category-bar"></div>
+            <div class="table-wrap compact">
+              <table>
+                <thead>
+                  <tr>
+                    <th>회사</th>
+                    <th>전체</th>
+                    <th>탱커</th>
+                    <th>벌커</th>
+                    <th>가스</th>
+                    <th>컨테이너</th>
+                    <th>일반화물</th>
+                    <th>오프쇼어</th>
+                    <th>여객</th>
+                    <th>기타</th>
+                  </tr>
+                </thead>
+                <tbody id="fleetTable"></tbody>
+              </table>
+            </div>
           </section>
 
           <section class="panel table-panel">

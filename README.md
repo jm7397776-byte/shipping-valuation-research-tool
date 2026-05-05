@@ -59,6 +59,39 @@ python3 -m http.server 4173
 - `EV/DWT = EV / DWT_Total`
 - `EV/Fleet = EV / Fleet_Total`
 
+## 전세계 선대 원장 입력
+
+정확한 회사별 선종 수는 IMO 단위 선박 원장이 필요합니다. 공개 웹을 임의로 긁어 만드는 방식은 누락·중복·약관 문제가 생기므로 연구용 기준으로 쓰면 안 됩니다.
+
+권장 원천:
+
+- Clarksons World Fleet Register
+- MarineTraffic/Kpler Vessels API
+- Lloyd's List Intelligence
+- S&P/IHS Maritime
+- AXSMarine 계열 데이터
+
+원장 CSV는 `data/fleet_raw_template.csv` 형식으로 넣습니다.
+
+필수 필드:
+
+- `Company_Name`
+- `IMO`
+- `Ship_Type`
+
+선택 필드:
+
+- `RIC`
+- `Vessel_Name`
+- `Ship_Type_Detail`
+- `DWT`
+- `GT`
+- `Flag`
+- `Source`
+- `Source_Date`
+
+대시보드는 `IMO`를 기준으로 중복을 제거한 뒤 회사별로 `탱커`, `벌크`, `가스`, `컨테이너`, `일반화물`, `오프쇼어`, `여객`, `기타` 척수를 집계합니다. 선종 카테고리 버튼을 누르면 해당 선종을 1척 이상 보유한 회사 목록만 표시됩니다.
+
 ## 배포
 
 정적 파일만 쓰므로 GitHub Pages, Netlify, Vercel, 사내 웹서버에 그대로 올릴 수 있습니다.

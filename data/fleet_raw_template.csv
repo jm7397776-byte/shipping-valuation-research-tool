@@ -1,0 +1,2 @@
+Company_Name,RIC,IMO,Vessel_Name,Ship_Type,Ship_Type_Detail,Capacity,DWT,GT,Flag,Source,Source_Date,Notes
+Example Shipping Ltd,EXMP.OQ,9999999,EXAMPLE BULKER,Bulk Carrier,Capesize bulk carrier,180000,180000,95000,Panama,Clarksons World Fleet Register,2026-05-05,Replace example rows with licensed IMO-level fleet export

@@ -268,6 +268,27 @@ canvas {
   gap: 12px;
 }
 
+.category-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.category-bar button {
+  min-height: 32px;
+  padding: 0 11px;
+  border-color: var(--line);
+  background: #fff;
+  color: #334155;
+}
+
+.category-bar button.active {
+  background: var(--dark);
+  border-color: var(--dark);
+  color: #fff;
+}
+
 .metric-tile {
   min-height: 74px;
   padding: 13px;
@@ -292,6 +313,10 @@ canvas {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.table-wrap.compact table {
+  min-width: 860px;
 }
 
 table {
