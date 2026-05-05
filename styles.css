@@ -268,6 +268,293 @@ canvas {
   gap: 12px;
 }
 
+.panel-subtitle {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.directory-panel {
+  margin-bottom: 18px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.directory-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.directory-head.compact {
+  margin: 0 0 8px;
+}
+
+.directory-head strong,
+.directory-block > span {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.directory-head span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.directory-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.mini-button-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.mini-button-grid button {
+  min-height: 34px;
+  justify-content: space-between;
+  padding: 0 9px;
+  border-color: var(--line);
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+}
+
+.mini-button-grid button.active {
+  background: var(--dark);
+  border-color: var(--dark);
+  color: #fff;
+}
+
+.mini-button-grid button span {
+  color: inherit;
+  font-weight: 800;
+  opacity: 0.8;
+}
+
+.company-directory-block {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.company-list {
+  display: grid;
+  gap: 7px;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.company-list-item,
+.company-name-button {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  display: grid;
+  justify-items: start;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: #17202a;
+  text-align: left;
+}
+
+.company-list-item:hover,
+.company-name-button:hover {
+  transform: none;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.company-list-item.active {
+  border-color: #0f766e;
+  background: #ecfdf5;
+}
+
+.company-list-item strong,
+.company-name-button strong {
+  color: #17202a;
+  font-size: 13px;
+}
+
+.company-list-item span,
+.company-list-item em,
+.company-name-button span {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.empty-list {
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.company-dashboard {
+  display: grid;
+  gap: 16px;
+}
+
+.company-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(420px, 1.1fr);
+  gap: 14px;
+}
+
+.company-overview {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.company-overview p,
+.helper-text,
+.note-box p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: keep-all;
+}
+
+.company-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.company-actions button {
+  min-height: 32px;
+  padding: 0 11px;
+  border-color: var(--line);
+  background: #fff;
+  color: #334155;
+}
+
+.fleet-count-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.fleet-count-grid div,
+.company-metric {
+  min-height: 66px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.fleet-count-grid span,
+.company-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.fleet-count-grid strong,
+.company-metric strong {
+  display: block;
+  margin-top: 6px;
+  color: #17202a;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.company-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr) minmax(260px, 0.9fr);
+  gap: 14px;
+}
+
+.company-detail-grid section {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.company-detail-grid h3 {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+}
+
+.company-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.company-link-list {
+  display: grid;
+  gap: 8px;
+}
+
+.company-link-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.company-link-row strong,
+.company-link-row span,
+.company-link-row a,
+.company-link-row em {
+  font-size: 12px;
+  font-style: normal;
+}
+
+.company-link-row strong {
+  color: #17202a;
+}
+
+.company-link-row span,
+.company-link-row em {
+  color: var(--muted);
+}
+
+.company-link-row a {
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.note-box {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
 .research-grid {
   display: grid;
   grid-template-columns: minmax(260px, 0.85fr) minmax(360px, 1.15fr);
@@ -740,7 +1027,9 @@ td.number {
   .workspace,
   .chart-grid,
   .research-grid,
-  .thesis-grid {
+  .thesis-grid,
+  .company-summary-grid,
+  .company-detail-grid {
     grid-template-columns: 1fr;
   }
 
@@ -750,7 +1039,8 @@ td.number {
 
   .kpi-strip,
   .valuation-grid,
-  .quality-grid {
+  .quality-grid,
+  .fleet-count-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -773,7 +1063,11 @@ td.number {
   .kpi-strip,
   .valuation-grid,
   .quality-grid,
-  .variable-row {
+  .variable-row,
+  .fleet-count-grid,
+  .company-metric-grid,
+  .mini-button-grid,
+  .company-link-row {
     grid-template-columns: 1fr;
   }
 

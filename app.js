@@ -7,6 +7,10 @@ const state = {
   researchBlueprint: { topics: [], data_sources: [], workflow: [] },
   activeTopic: "fleet_mix",
   fleetCategory: "All",
+  directoryMode: "shipType",
+  activeShipType: "All",
+  activeCoreGroup: "all",
+  selectedCompanyKey: "",
   preview: null,
   thresholds: {
     tanker: 60,
@@ -279,6 +283,69 @@ function attachComputed(firm) {
   };
 }
 
+function companyKey(item) {
+  return item?.RIC || item?.Company_Name || "";
+}
+
+function buildCompanyDirectory() {
+  const directory = new Map();
+
+  state.firms.map(attachComputed).forEach((firm) => {
+    const key = companyKey(firm);
+    if (!key) return;
+    directory.set(key, {
+      key,
+      Company_Name: firm.Company_Name,
+      RIC: firm.RIC,
+      firm,
+      fleet: null,
+    });
+  });
+
+  buildFleetSummary().forEach((fleet) => {
+    const key = companyKey(fleet);
+    if (!key) return;
+    const existing = directory.get(key);
+    directory.set(key, {
+      key,
+      Company_Name: existing?.Company_Name || fleet.Company_Name,
+      RIC: existing?.RIC || fleet.RIC || "",
+      firm: existing?.firm || null,
+      fleet,
+    });
+  });
+
+  return Array.from(directory.values()).sort((a, b) => {
+    const aFleet = a.fleet?.Total ?? 0;
+    const bFleet = b.fleet?.Total ?? 0;
+    return bFleet - aFleet || a.Company_Name.localeCompare(b.Company_Name);
+  });
+}
+
+function directoryRows() {
+  const q = state.search.trim().toLowerCase();
+  const rows = buildCompanyDirectory().filter((entry) => {
+    if (state.directoryMode === "shipType") {
+      if (!entry.fleet) return false;
+      return state.activeShipType === "All" || (entry.fleet[state.activeShipType] ?? 0) > 0;
+    }
+    if (!entry.firm) return false;
+    return state.activeCoreGroup === "all" || entry.firm.Decision_Group === state.activeCoreGroup;
+  });
+
+  return rows.filter((entry) => {
+    if (!q) return true;
+    return `${entry.Company_Name} ${entry.RIC} ${entry.firm?.Verdict_Fleet_Description ?? ""}`
+      .toLowerCase()
+      .includes(q);
+  });
+}
+
+function selectedCompany() {
+  const directory = buildCompanyDirectory();
+  return directory.find((entry) => entry.key === state.selectedCompanyKey) ?? null;
+}
+
 function filteredRows() {
   const q = state.search.trim().toLowerCase();
   return state.firms
@@ -446,6 +513,10 @@ function renderFleetSummary() {
   document.querySelectorAll("[data-fleet-category]").forEach((button) => {
     button.addEventListener("click", () => {
       state.fleetCategory = button.dataset.fleetCategory;
+      state.directoryMode = "shipType";
+      state.activeShipType = state.fleetCategory;
+      state.filter = "all";
+      $("groupFilter").value = "all";
       render();
     });
   });
@@ -472,7 +543,12 @@ function renderFleetSummary() {
     .map(
       (row) => `
       <tr>
-        <td class="company-cell"><strong>${escapeHtml(row.Company_Name)}</strong><span>${escapeHtml(row.RIC ?? "")}</span></td>
+        <td class="company-cell">
+          <button class="company-name-button" type="button" data-select-company="${escapeHtml(companyKey(row))}">
+            <strong>${escapeHtml(row.Company_Name)}</strong>
+            <span>${escapeHtml(row.RIC ?? "")}</span>
+          </button>
+        </td>
         <td class="number">${fmtNumber(row.Total)}</td>
         <td class="number">${fmtNumber(row.Tanker)}</td>
         <td class="number">${fmtNumber(row["Dry bulk"])}</td>
@@ -498,6 +574,123 @@ function renderSourceLink(row) {
   return `${source}${meta ? `<span>${escapeHtml(meta)}</span>` : ""}`;
 }
 
+function coreCategoryItems() {
+  const counts = groupCounts(state.firms.map(attachComputed));
+  return [
+    ["all", "전체", state.firms.length],
+    ["Tanker core", "탱커 주력", counts["Tanker core"]],
+    ["Dry bulk core", "벌커 주력", counts["Dry bulk core"]],
+    ["Mixed / review", "혼합·검토", counts["Mixed / review"]],
+    ["Excluded", "제외", counts.Excluded],
+  ];
+}
+
+function renderDirectoryWorkflow() {
+  const fleetSummary = buildFleetSummary();
+  const shipTotals = Object.fromEntries(FLEET_CATEGORIES.map(([key]) => [key, 0]));
+  fleetSummary.forEach((row) => {
+    FLEET_CATEGORIES.forEach(([key]) => {
+      if (key === "All") return;
+      shipTotals[key] += row[key] ?? 0;
+    });
+  });
+  shipTotals.All = fleetSummary.reduce((sum, row) => sum + row.Total, 0);
+
+  $("shipTypeNav").innerHTML = FLEET_CATEGORIES.map(
+    ([key, label]) => `
+      <button type="button" class="${state.directoryMode === "shipType" && state.activeShipType === key ? "active" : ""}" data-directory-ship="${key}">
+        ${escapeHtml(label)} <span>${fmtNumber(shipTotals[key] ?? 0)}</span>
+      </button>
+    `,
+  ).join("");
+
+  $("coreGroupNav").innerHTML = coreCategoryItems()
+    .map(
+      ([key, label, count]) => `
+        <button type="button" class="${state.directoryMode === "core" && state.activeCoreGroup === key ? "active" : ""}" data-directory-core="${escapeHtml(key)}">
+          ${escapeHtml(label)} <span>${fmtNumber(count)}</span>
+        </button>
+      `,
+    )
+    .join("");
+
+  document.querySelectorAll("[data-directory-ship]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.directoryMode = "shipType";
+      state.activeShipType = button.dataset.directoryShip;
+      state.fleetCategory = state.activeShipType;
+      state.filter = "all";
+      $("groupFilter").value = "all";
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-directory-core]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.directoryMode = "core";
+      state.activeCoreGroup = button.dataset.directoryCore;
+      state.filter = state.activeCoreGroup;
+      $("groupFilter").value = state.activeCoreGroup;
+      render();
+    });
+  });
+
+  const rows = directoryRows();
+  if (!rows.length) {
+    state.selectedCompanyKey = "";
+  } else if (!rows.some((entry) => entry.key === state.selectedCompanyKey)) {
+    state.selectedCompanyKey = rows[0].key;
+  }
+
+  const activeLabel =
+    state.directoryMode === "shipType"
+      ? FLEET_CATEGORIES.find(([key]) => key === state.activeShipType)?.[1] ?? "선종"
+      : coreCategoryItems().find(([key]) => key === state.activeCoreGroup)?.[1] ?? "주력";
+  $("directoryModeLabel").textContent = state.directoryMode === "shipType" ? "선종 기준" : "주력 기준";
+  $("companyListTitle").textContent = `${activeLabel} 회사 목록`;
+  $("companyListCount").textContent = `${rows.length}개`;
+
+  $("companyList").innerHTML = rows.length
+    ? rows
+        .map((entry) => {
+          const total = entry.fleet?.Total ?? null;
+          const detail =
+            state.directoryMode === "shipType"
+              ? fleetListMeta(entry)
+              : entry.firm?.Decision_Reason || fleetListMeta(entry);
+          const badge = entry.firm?.Decision_Label ?? "선대자료";
+          return `
+            <button type="button" class="company-list-item ${entry.key === state.selectedCompanyKey ? "active" : ""}" data-select-company="${escapeHtml(entry.key)}">
+              <strong>${escapeHtml(entry.Company_Name)}</strong>
+              <span>${escapeHtml(entry.RIC || "RIC 미확인")} · ${total === null ? "선대수 미확인" : `${fmtNumber(total)}척`} · ${escapeHtml(badge)}</span>
+              <em>${escapeHtml(detail)}</em>
+            </button>
+          `;
+        })
+        .join("")
+    : `<div class="empty-list">검색 또는 분류 조건에 맞는 회사가 없습니다.</div>`;
+
+}
+
+function fleetListMeta(entry) {
+  const fleet = entry.fleet;
+  if (!fleet) return "공식 선대 수 미확인";
+  const counts = [
+    ["탱커", fleet.Tanker],
+    ["벌커", fleet["Dry bulk"]],
+    ["컨테이너", fleet.Container],
+    ["가스", fleet["Gas carrier"]],
+    ["일반화물", fleet["General cargo"]],
+    ["오프쇼어", fleet.Offshore],
+    ["여객", fleet.Passenger],
+    ["기타", fleet.Other],
+  ]
+    .filter(([, value]) => value > 0)
+    .map(([label, value]) => `${label} ${fmtNumber(value)}`)
+    .join(" · ");
+  return counts || "세부 선종 미분류";
+}
+
 function badgeClass(group) {
   if (group === "Tanker core") return "tanker";
   if (group === "Dry bulk core") return "bulk";
@@ -512,7 +705,12 @@ function renderTable(rows) {
       (row) => `
       <tr>
         <td><span class="badge ${badgeClass(row.Decision_Group)}">${row.Decision_Label}</span></td>
-        <td class="company-cell"><strong>${escapeHtml(row.Company_Name)}</strong><span>${escapeHtml(row.RIC)}</span></td>
+        <td class="company-cell">
+          <button class="company-name-button" type="button" data-select-company="${escapeHtml(companyKey(row))}">
+            <strong>${escapeHtml(row.Company_Name)}</strong>
+            <span>${escapeHtml(row.RIC)}</span>
+          </button>
+        </td>
         <td>${escapeHtml(row.RIC)}</td>
         <td class="number">${fmtPct(row.Tanker_Pct)}</td>
         <td class="number">${fmtPct(row.DryBulk_Pct)}</td>
@@ -526,6 +724,16 @@ function renderTable(rows) {
     .join("");
   document.querySelectorAll("[data-dataroom]").forEach((button) => {
     button.addEventListener("click", () => showCompanyDataroom(button.dataset.dataroom));
+  });
+}
+
+function bindCompanySelection() {
+  document.querySelectorAll("[data-select-company]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedCompanyKey = button.dataset.selectCompany;
+      render();
+      document.querySelector(".company-panel")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
   });
 }
 
@@ -652,11 +860,14 @@ function render() {
   $("bulkThresholdValue").textContent = fmtPct(state.thresholds.bulk);
   $("oppositeThresholdValue").textContent = fmtPct(state.thresholds.opposite);
   const rows = filteredRows();
+  renderDirectoryWorkflow();
   renderKpis(rows);
+  renderCompanyDashboard();
   renderValuation(rows);
   renderFleetSummary();
   renderThesisAssistant();
   renderTable(rows);
+  bindCompanySelection();
   drawComposition(rows);
   drawScatter(rows);
 }
@@ -1203,12 +1414,12 @@ function isUsListedRic(ric) {
   return /\.OQ$|\.N$|\.A$/i.test(ric);
 }
 
-function showCompanyDataroom(ric) {
-  const row = state.firms.map(attachComputed).find((item) => item.RIC === ric);
-  if (!row) return;
-  const fleet = buildFleetSummary().find((item) => item.RIC === ric);
-  const yahoo = ricToYahoo(row.RIC);
-  const links = [
+function companyLinks(entry) {
+  const name = entry?.Company_Name ?? "";
+  const ric = entry?.RIC ?? "";
+  const fleet = entry?.fleet ?? null;
+  const yahoo = ricToYahoo(ric);
+  return [
     {
       label: "시장가격",
       value: yahoo ? `Yahoo Finance · ${yahoo}` : "RIC 변환 필요",
@@ -1216,40 +1427,253 @@ function showCompanyDataroom(ric) {
     },
     {
       label: "SEC 감사보고서/공시",
-      value: isUsListedRic(row.RIC) ? "EDGAR 20-F/10-K 검색" : "비미국 상장사는 거래소/IR 링크 확인",
-      url: isUsListedRic(row.RIC)
-        ? `https://www.sec.gov/edgar/search/#/q=${encodeURIComponent(row.Company_Name)}`
-        : "",
+      value: isUsListedRic(ric) ? "EDGAR 20-F/10-K 검색" : "비미국 상장사는 거래소/IR 확인",
+      url: isUsListedRic(ric) ? `https://www.sec.gov/edgar/search/#/q=${encodeURIComponent(name)}` : "",
     },
     {
       label: "선대 공식자료",
-      value: fleet ? `${fleet.Source_Name || "공식자료"} · ${fleet.As_Of || "기준일 확인"}` : "아직 공식자료 미확인",
+      value: fleet ? `${fleet.Source_Name || "공식자료"} · ${fleet.As_Of || "기준일 확인"}` : "공식 선대 수 미확인",
       url: fleet?.Source_URL ?? "",
     },
     {
       label: "IR/연차보고서 검색",
-      value: "회사명 + investor relations + annual report",
-      url: `https://www.google.com/search?q=${encodeURIComponent(`${row.Company_Name} investor relations annual report fleet`)}`,
+      value: "회사명 + investor relations + annual report + fleet",
+      url: `https://www.google.com/search?q=${encodeURIComponent(`${name} investor relations annual report fleet`)}`,
     },
   ];
+}
+
+function valuationItems(entry) {
+  const firm = entry?.firm ?? null;
+  return [
+    ["시가총액", firm?.Finance?.Market_Cap, firm?.Finance?.Currency],
+    ["기업가치 EV", firm?.EV, firm?.Finance?.Currency],
+    ["매출", firm?.Finance?.Revenue, firm?.Finance?.Currency],
+    ["EBITDA", firm?.Finance?.EBITDA, firm?.Finance?.Currency],
+    ["EV/EBITDA", firm?.EV_EBITDA, "multiple"],
+    ["P/B", firm?.P_Book, "multiple"],
+    ["EV/DWT", firm?.EV_DWT, firm?.Finance?.Currency],
+    ["EV/Fleet", firm?.EV_Fleet, firm?.Finance?.Currency],
+  ];
+}
+
+function buildCompanyResearchNote(entry) {
+  const firm = entry?.firm ?? null;
+  const fleet = entry?.fleet ?? null;
+  const finance = firm?.Finance ?? null;
+  const lines = [
+    `# ${entry.Company_Name} 연구 노트`,
+    "",
+    `- RIC: ${entry.RIC || "미확인"}`,
+    `- 주력 분류: ${firm?.Decision_Label ?? "기본 55개 표본 밖 / 별도 검토"}`,
+    `- 분류 근거: ${firm?.Decision_Reason ?? "공식 선대 자료 기준으로만 확인"}`,
+    `- 전체 선대: ${fleet ? `${fmtNumber(fleet.Total)}척` : "미확인"}`,
+    `- 탱커: ${fleet ? fmtNumber(fleet.Tanker) : "미확인"}`,
+    `- 벌커: ${fleet ? fmtNumber(fleet["Dry bulk"]) : "미확인"}`,
+    `- 컨테이너: ${fleet ? fmtNumber(fleet.Container) : "미확인"}`,
+    `- 가스선: ${fleet ? fmtNumber(fleet["Gas carrier"]) : "미확인"}`,
+    `- 출처 상태: ${fleet?.Source_Status ?? "미확인"}`,
+    `- 기준일: ${fleet?.As_Of ?? "미확인"}`,
+    `- 산정 기준: ${fleet?.Basis ?? "미확인"}`,
+    "",
+    "## 기업가치 분석",
+    "",
+    `- EV/EBITDA: ${fmtMultiple(firm?.EV_EBITDA)}`,
+    `- P/B: ${fmtMultiple(firm?.P_Book)}`,
+    `- EV/DWT: ${fmtNumber(firm?.EV_DWT, 2)}`,
+    `- EV/Fleet: ${fmtNumber(firm?.EV_Fleet, 2)}`,
+    finance
+      ? `- 재무 입력 출처: ${finance.Source || "출처 미기재"} ${finance.Source_Date || ""}`.trim()
+      : "- 재무 입력: 아직 없음. 가치평가 입력 템플릿에 Market_Cap, Debt, Cash, EBITDA, Book_Equity, DWT_Total을 넣어야 합니다.",
+    "",
+    "## 논문 사용 메모",
+    "",
+    "- 선대 수는 출처 URL, 기준일, owned/operated/chartered 기준을 함께 인용합니다.",
+    "- Source_Status가 review이면 본문 기본 표본보다 강건성 검정 또는 부록 표본으로 두는 편이 안전합니다.",
+    "- 같은 선종 안에서도 선대 규모, DWT, 소유/용선 비중을 통제변수로 둡니다.",
+  ];
+  return lines.join("\n");
+}
+
+function buildCompanyResearchPack(entry) {
+  const topic = selectedTopic();
+  const note = buildCompanyResearchNote(entry);
+  const links = companyLinks(entry);
+  return [
+    note,
+    "",
+    "## 선택 연구 주제 연결",
+    "",
+    `- 연구 주제: ${topic?.title ?? ""}`,
+    `- 연구 질문: ${topic?.question ?? ""}`,
+    "",
+    "## 가설 적용",
+    "",
+    ...((topic?.hypotheses ?? []).map((text) => `- ${text}`)),
+    "",
+    "## 자료 링크",
+    "",
+    ...links.map((link) => `- ${link.label}: ${link.url || link.value}`),
+    "",
+    "## 이 회사로 확인할 체크포인트",
+    "",
+    "- 선종 분류가 회사 공식 fleet page와 일치하는가?",
+    "- valuation 입력값의 회계연도와 선대 기준일이 맞는가?",
+    "- EV 계산에서 부채, 현금, 리스부채, 우선주, 소수지분 처리가 일관적인가?",
+    "- peer group 비교에서 탱커·벌커 혼합 회사를 제외했는가?",
+  ].join("\n");
+}
+
+function renderCompanyDashboard() {
+  const entry = selectedCompany();
+  if (!entry) {
+    $("selectedCompanyName").textContent = "회사 대시보드";
+    $("selectedCompanySubtitle").textContent = "왼쪽 회사 목록에서 회사를 선택합니다";
+    $("selectedCompanyStatus").textContent = "";
+    $("companyDashboard").innerHTML = `<div class="empty-list">선종 분류 또는 주력 분류를 누른 뒤 회사를 선택하세요.</div>`;
+    return;
+  }
+
+  const firm = entry.firm;
+  const fleet = entry.fleet;
+  const finance = firm?.Finance ?? null;
+  $("selectedCompanyName").textContent = entry.Company_Name;
+  $("selectedCompanySubtitle").textContent = `${entry.RIC || "RIC 미확인"} · ${firm?.Decision_Label ?? "공식 선대자료"} · ${fleet?.Basis ?? "선대 기준 확인 필요"}`;
+  $("selectedCompanyStatus").textContent = fleet?.Source_Status
+    ? `${fleet.Source_Status} · ${fleet.As_Of || "기준일 확인"}`
+    : "선대 출처 미확인";
+
+  const fleetCounts = [
+    ["전체", fleet?.Total],
+    ["탱커", fleet?.Tanker],
+    ["벌커", fleet?.["Dry bulk"]],
+    ["컨테이너", fleet?.Container],
+    ["가스", fleet?.["Gas carrier"]],
+    ["일반화물", fleet?.["General cargo"]],
+    ["오프쇼어", fleet?.Offshore],
+    ["여객", fleet?.Passenger],
+    ["기타", fleet?.Other],
+  ];
+
+  const valuationHtml = valuationItems(entry)
+    .map(([label, value, unit]) => {
+      const display = unit === "multiple" ? fmtMultiple(value) : value === null || value === undefined ? "-" : `${fmtNumber(value, 2)}${unit && unit !== "multiple" ? ` ${escapeHtml(unit)}` : ""}`;
+      return `
+        <div class="company-metric">
+          <span>${escapeHtml(label)}</span>
+          <strong>${display}</strong>
+        </div>
+      `;
+    })
+    .join("");
+
+  const linksHtml = companyLinks(entry)
+    .map(
+      (link) => `
+        <div class="company-link-row">
+          <strong>${escapeHtml(link.label)}</strong>
+          <span>${escapeHtml(link.value)}</span>
+          ${link.url ? `<a href="${escapeHtml(link.url)}" target="_blank" rel="noopener">열기</a>` : `<em>수동 확인</em>`}
+        </div>
+      `,
+    )
+    .join("");
+
+  $("companyDashboard").innerHTML = `
+    <div class="company-summary-grid">
+      <div class="company-overview">
+        <span class="badge ${firm ? badgeClass(firm.Decision_Group) : "mixed"}">${escapeHtml(firm?.Decision_Label ?? "선대자료")}</span>
+        <p>${escapeHtml(firm?.Decision_Reason ?? "기본 표본에는 없지만 공식 공개자료 기반 선대 수가 연결된 상장 해운사입니다.")}</p>
+        <div class="company-actions">
+          <button type="button" data-company-action="links">자료실</button>
+          <button type="button" data-company-action="note">연구노트</button>
+          <button type="button" data-company-action="pack">논문패키지</button>
+        </div>
+      </div>
+      <div class="fleet-count-grid">
+        ${fleetCounts
+          .map(
+            ([label, value]) => `
+              <div>
+                <span>${escapeHtml(label)}</span>
+                <strong>${value === null || value === undefined ? "-" : fmtNumber(value)}</strong>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    </div>
+
+    <div class="company-detail-grid">
+      <section>
+        <h3>기업가치분석</h3>
+        <div class="company-metric-grid">${valuationHtml}</div>
+        <p class="helper-text">${
+          finance
+            ? escapeHtml(`${finance.Fiscal_Year || "회계연도 미기재"} 재무 입력 반영 · ${finance.Source || "출처 미기재"}`)
+            : "재무 CSV를 넣으면 EV/EBITDA, P/B, EV/DWT, EV/Fleet이 회사별로 바로 계산됩니다."
+        }</p>
+      </section>
+      <section>
+        <h3>선대·공시 출처</h3>
+        <div class="company-link-list">${linksHtml}</div>
+      </section>
+      <section>
+        <h3>논문 작성 메모</h3>
+        <div class="note-box">
+          <p>${escapeHtml(fleet ? `${fleet.Source_Status || "review"} 상태 자료입니다. ${fleet.Basis || "산정 기준"} 기준으로 ${fleet.As_Of || "기준일"}에 확인된 선대 수를 사용합니다.` : "선대 원장 또는 공식 fleet page 확인이 필요합니다.")}</p>
+          <p>${escapeHtml(firm ? `${firm.Decision_Label} 표본으로 분류됩니다. peer group 비교에서는 같은 기준으로 재무 입력과 선대 기준일을 맞춰야 합니다.` : "기본 55개 표본 밖 회사이므로 주력 선종 분류를 별도 확정해야 합니다.")}</p>
+        </div>
+      </section>
+    </div>
+  `;
+
+  document.querySelectorAll("[data-company-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = button.dataset.companyAction;
+      if (action === "links") showDirectoryDataroom(entry.key);
+      if (action === "note") {
+        showPreview({
+          title: `${entry.Company_Name} 연구노트`,
+          filename: `${entry.RIC || entry.Company_Name}_research_note.md`,
+          content: buildCompanyResearchNote(entry),
+          type: "markdown",
+        });
+      }
+      if (action === "pack") {
+        showPreview({
+          title: `${entry.Company_Name} 논문패키지`,
+          filename: `${entry.RIC || entry.Company_Name}_thesis_pack.md`,
+          content: buildCompanyResearchPack(entry),
+          type: "markdown",
+        });
+      }
+    });
+  });
+}
+
+function showDirectoryDataroom(key) {
+  const entry = buildCompanyDirectory().find((item) => item.key === key);
+  if (!entry) return;
+  const links = companyLinks(entry);
   const csv = toCsv(
     links.map((link) => ({
-      Company_Name: row.Company_Name,
-      RIC: row.RIC,
+      Company_Name: entry.Company_Name,
+      RIC: entry.RIC,
       Item: link.label,
       Value: link.value,
       URL: link.url,
     })),
   );
   showPreview({
-    title: `${row.Company_Name} 자료실`,
-    filename: `${row.RIC || row.Company_Name}_research_links.csv`,
+    title: `${entry.Company_Name} 자료실`,
+    filename: `${entry.RIC || entry.Company_Name}_research_links.csv`,
     content: csv,
     type: "html",
     html: `
       <div class="dataroom-head">
-        <strong>${escapeHtml(row.Decision_Label)}</strong>
-        <span>${escapeHtml(row.Decision_Reason)}</span>
+        <strong>${escapeHtml(entry.firm?.Decision_Label ?? "선대자료")}</strong>
+        <span>${escapeHtml(entry.firm?.Decision_Reason ?? fleetListMeta(entry))}</span>
       </div>
       <div class="link-list">
         ${links
@@ -1270,6 +1694,11 @@ function showCompanyDataroom(ric) {
       </div>
     `,
   });
+}
+
+function showCompanyDataroom(ric) {
+  const entry = buildCompanyDirectory().find((item) => item.RIC === ric);
+  if (entry) showDirectoryDataroom(entry.key);
 }
 
 async function handleFile(event) {
@@ -1319,6 +1748,8 @@ async function init() {
   });
   $("groupFilter").addEventListener("change", (event) => {
     state.filter = event.target.value;
+    state.directoryMode = "core";
+    state.activeCoreGroup = event.target.value;
     render();
   });
   $("tankerThreshold").addEventListener("input", (event) => {
