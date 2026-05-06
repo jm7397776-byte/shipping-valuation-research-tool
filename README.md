@@ -25,7 +25,7 @@ python3 -m http.server 4173
 
 1. 왼쪽 `선종 분류`에서 벌크선, 탱커선, 컨테이너선, 가스선, 일반화물선, 오프쇼어, 여객선, 기타 중 하나를 누릅니다.
 2. 아래 회사 목록에 해당 선종을 1척 이상 보유한 상장 해운사가 표시됩니다.
-3. 왼쪽 `주력 분류`에서 `탱커 주력`, `벌커 주력`, `혼합·검토`, `제외`를 누르면 55개 판정표 기준 회사 목록으로 전환됩니다.
+3. 왼쪽 `주력 분류`에서 `가스 주력`, `Dry bulk 주력`, `Container 주력`, `Tanker 주력`, `혼합·검토`를 누르면 4대 선종 주력 기준 회사 목록으로 전환됩니다.
 4. 회사 이름을 누르면 오른쪽 회사 대시보드에 회사 정보, 선종별 척수, 기업가치분석, 출처 링크, 연구노트, 논문패키지가 표시됩니다.
 5. 상단 `연구 실행판`에서 현재 연구 질문, 실행 중인 분석, 데이터 상태, 다음 행동을 먼저 확인합니다.
 6. 상단 버튼과 회사별 `자료실`, `연구노트`, `논문패키지`는 먼저 앱 안에서 미리보기로 열리고, 필요한 경우에만 다운로드합니다.
@@ -34,11 +34,14 @@ python3 -m http.server 4173
 
 기본값은 다음과 같습니다.
 
+- 4대 주력 선종: `Gas / Dry bulk / Container / Tanker`
+- LNG, LPG, gas, VLGC 등은 기존 연구용 `Tanker_%`에 들어 있어도 `Gas`로 별도 분리합니다.
+- 컨테이너 노출은 `Container`로 별도 표시합니다. 단 원자료가 "secondary"라고만 쓰고 비중이 없으면 보조 선종으로 기록하고 임의 비중은 만들지 않습니다.
 - 탱커 주력: `Tanker_Pct >= 60%` 그리고 `DryBulk_Pct <= 35%`
 - 벌커 주력: `DryBulk_Pct >= 70%` 그리고 `Tanker_Pct <= 35%`
 - 제외: 원자료 설명에 `EXCLUDE`, `insufficient trading data`, `combination carrier`가 있는 경우
 
-대시보드에서 슬라이더로 기준을 바꾸면 모든 KPI, 차트, 판정표가 즉시 다시 계산됩니다.
+대시보드에서 슬라이더로 기준을 바꾸면 탱커/벌커 회귀 연구용 판정표가 즉시 다시 계산됩니다. 4대 주력 선종 분류는 별도 컬럼으로 유지되어 가스선이 벌커 또는 탱커 안에 섞여 보이지 않습니다.
 
 ## 가치평가 CSV 입력
 
@@ -61,6 +64,8 @@ python3 -m http.server 4173
 - `Fleet_Total`
 - `Fleet_Tankers`
 - `Fleet_Bulkers`
+- `Fleet_Gas_Carriers`
+- `Fleet_Containers`
 - `DWT_Total`
 - `Source`
 - `Source_Date`
@@ -125,6 +130,7 @@ python3 -m http.server 4173
 - 상단 `논문 초안` 버튼은 현재 연구 주제, 표본 상태, 실제 결과값, 해석, 한계, 참고문헌 수집 링크를 하나의 마크다운 초안으로 미리 보여줍니다.
 - 첨부한 `Red_Sea_DiD_Model_drafting.xlsx`는 `scripts/analyze_red_sea_did.py`로 감사·회귀 요약을 만들고, 앱의 `해운 Shock 회귀 워크벤치(현재 사례: 홍해)`에서 데이터 오류, DiD 계수, CAR 차이, 밸류에이션 이벤트 반응, Stata 실행 패키지, 논문 차별화 메모를 확인합니다.
 - 논문 초안은 대시보드의 `논문 초안` 탭에서 바로 읽을 수 있고, 필요한 경우 마크다운 또는 엑셀용 CSV로 내려받습니다. 완성 엑셀에는 `Thesis_Draft_Notes` 시트도 같이 들어갑니다.
+- 완성 엑셀에는 `Ship_Type_4_Classification` 시트가 추가되어 55개 표본을 `Gas / Dry bulk / Container / Tanker / Mixed review` 기준으로 다시 볼 수 있습니다.
 - Stata 실행용 로컬 패키지는 `red_sea_stata_package` 폴더에 생성됩니다. Windows/LG 노트북에서는 `run_red_sea_stata_windows.bat`를 더블클릭하고, 공통 실행 파일은 `red_sea_regression.do`입니다.
 - Market Cap/EV/EBITDA 이벤트 반응은 원본 엑셀의 벤더 소스와 공식이 추적되는 A급 소스 기반 파생값으로 제공합니다. completed 엑셀의 `A_Grade_Checklist`와 `Valuation_Event_Panel`에서 출처와 공식을 확인합니다.
 - Bloomberg/Refinitiv/LSEG/Clarksons 같은 라이선스 원자료는 공개 GitHub Pages에 올리지 말고, 동생에게는 Stata 패키지 폴더를 별도로 전달하세요.

@@ -40,12 +40,22 @@ const GROUP_LABEL = {
   Excluded: "제외",
 };
 
+const PRIMARY_4_LABEL = {
+  Gas: "가스",
+  "Dry bulk": "Dry bulk",
+  Container: "Container",
+  Tanker: "Tanker",
+  "Mixed / review": "혼합·검토",
+};
+
+const PRIMARY_4_ORDER = ["Gas", "Dry bulk", "Container", "Tanker", "Mixed / review"];
+
 const FLEET_CATEGORIES = [
   ["All", "전체"],
-  ["Dry bulk", "벌크선"],
-  ["Tanker", "탱커선"],
-  ["Container", "컨테이너선"],
   ["Gas carrier", "가스선"],
+  ["Dry bulk", "벌크선"],
+  ["Container", "컨테이너선"],
+  ["Tanker", "탱커선"],
   ["General cargo", "일반화물선"],
   ["Offshore", "오프쇼어"],
   ["Passenger", "여객선"],
@@ -198,6 +208,7 @@ function fmtMultiple(value) {
 }
 
 function normalizeFirm(row) {
+  const primary = row.Primary_Ship_Type_4 ?? row.Primary_4 ?? row.PrimaryShipType4 ?? "";
   return {
     Firm_ID: row.Firm_ID ?? row.firm_id ?? "",
     Company_Name: row.Company_Name ?? row.company_name ?? row.Company ?? "",
@@ -210,6 +221,20 @@ function normalizeFirm(row) {
     Segment: row.Segment ?? "",
     Tanker_Pct: parseNumber(row.Tanker_Pct ?? row["Tanker_%"] ?? row.Tanker) ?? 0,
     DryBulk_Pct: parseNumber(row.DryBulk_Pct ?? row["DryBulk_%"] ?? row.DryBulk) ?? 0,
+    Primary_Ship_Type_4: primary,
+    Gas_Pct: parseNumber(row.Gas_Pct ?? row["Gas_%"] ?? row.Gas) ?? 0,
+    DryBulk_4_Pct:
+      parseNumber(row.DryBulk_4_Pct ?? row.Dry_Bulk_4_Pct ?? row["DryBulk_4_%"]) ??
+      parseNumber(row.DryBulk_Pct ?? row["DryBulk_%"] ?? row.DryBulk) ??
+      0,
+    Container_Pct: parseNumber(row.Container_Pct ?? row["Container_%"] ?? row.Container) ?? 0,
+    Tanker_4_Pct:
+      parseNumber(row.Tanker_4_Pct ?? row["Tanker_4_%"]) ??
+      parseNumber(row.Tanker_Pct ?? row["Tanker_%"] ?? row.Tanker) ??
+      0,
+    Secondary_Ship_Types: row.Secondary_Ship_Types ?? "",
+    Ship_Type_4_Source: row.Ship_Type_4_Source ?? "",
+    Ship_Type_4_Note: row.Ship_Type_4_Note ?? "",
     Research_Group: row.Research_Group ?? "",
     Included: row.Included ?? "",
     Exclude_Reason: row.Exclude_Reason ?? "",
@@ -235,6 +260,8 @@ function normalizeFinance(row) {
     Fleet_Total: parseNumber(row.Fleet_Total),
     Fleet_Tankers: parseNumber(row.Fleet_Tankers),
     Fleet_Bulkers: parseNumber(row.Fleet_Bulkers),
+    Fleet_Gas_Carriers: parseNumber(row.Fleet_Gas_Carriers ?? row.Fleet_Gas),
+    Fleet_Containers: parseNumber(row.Fleet_Containers ?? row.Fleet_Container),
     DWT_Total: parseNumber(row.DWT_Total),
     Source: row.Source ?? "",
     Source_Date: row.Source_Date ?? "",
@@ -310,8 +337,9 @@ function normalizeFleetSummaryRow(row) {
 
 function majorShipType(shipType) {
   const text = String(shipType).toLowerCase();
-  if (text.includes("bulk") || text.includes("bulker")) return "Dry bulk";
   if (text.includes("lng") || text.includes("lpg") || text.includes("gas")) return "Gas carrier";
+  if (text.includes("bulk") || text.includes("bulker")) return "Dry bulk";
+  if (text.includes("container")) return "Container";
   if (
     text.includes("tanker") ||
     text.includes("oil") ||
@@ -320,7 +348,6 @@ function majorShipType(shipType) {
   ) {
     return "Tanker";
   }
-  if (text.includes("container")) return "Container";
   if (text.includes("general cargo") || text.includes("multi-purpose") || text.includes("multipurpose")) {
     return "General cargo";
   }
@@ -333,6 +360,7 @@ function classify(firm) {
   const desc = `${firm.Verdict_Fleet_Description} ${firm.Exclude_Reason}`.toLowerCase();
   const tanker = firm.Tanker_Pct;
   const bulk = firm.DryBulk_Pct;
+  const primary = primaryTypeFromFirm(firm);
 
   if (
     desc.includes("exclude") ||
@@ -345,27 +373,34 @@ function classify(firm) {
         ? "거래 데이터 부족"
         : desc.includes("combination carrier")
           ? "복합선/혼합 운항"
-          : "원자료 제외 표시",
+        : "원자료 제외 표시",
     };
   }
 
-  if (tanker >= state.thresholds.tanker && bulk <= state.thresholds.opposite) {
+  if (primary === "Gas" || primary === "Container") {
+    return {
+      group: "Mixed / review",
+      reason: `${PRIMARY_4_LABEL[primary] ?? primary} 주력: 탱커/벌커 회귀 core에서 분리`,
+    };
+  }
+
+  if (firm.Tanker_4_Pct >= state.thresholds.tanker && firm.DryBulk_4_Pct <= state.thresholds.opposite) {
     return {
       group: "Tanker core",
-      reason: `탱커 ${fmtPct(tanker)}, 벌커 ${fmtPct(bulk)}`,
+      reason: `Tanker ${fmtPct(firm.Tanker_4_Pct)}, Dry bulk ${fmtPct(firm.DryBulk_4_Pct)}`,
     };
   }
 
-  if (bulk >= state.thresholds.bulk && tanker <= state.thresholds.opposite) {
+  if (firm.DryBulk_4_Pct >= state.thresholds.bulk && firm.Tanker_4_Pct <= state.thresholds.opposite) {
     return {
       group: "Dry bulk core",
-      reason: `벌커 ${fmtPct(bulk)}, 탱커 ${fmtPct(tanker)}`,
+      reason: `Dry bulk ${fmtPct(firm.DryBulk_4_Pct)}, Tanker ${fmtPct(firm.Tanker_4_Pct)}`,
     };
   }
 
   return {
     group: "Mixed / review",
-    reason: `혼합 노출: 탱커 ${fmtPct(tanker)}, 벌커 ${fmtPct(bulk)}`,
+    reason: `혼합 노출: Gas ${fmtPct(firm.Gas_Pct)}, Dry bulk ${fmtPct(firm.DryBulk_4_Pct)}, Container ${fmtPct(firm.Container_Pct)}, Tanker ${fmtPct(firm.Tanker_4_Pct)}`,
   };
 }
 
@@ -442,6 +477,62 @@ function groupForEntry(entry) {
   return "Mixed / review";
 }
 
+function primaryTypeFromFirm(firm) {
+  if (!firm) return null;
+  if (PRIMARY_4_LABEL[firm.Primary_Ship_Type_4]) return firm.Primary_Ship_Type_4;
+  const desc = `${firm.Verdict_Fleet_Description} ${firm.Segment} ${firm.Exclude_Reason}`.toLowerCase();
+  if (desc.includes("exclude") || desc.includes("mixed") || desc.includes("combination carrier")) {
+    return "Mixed / review";
+  }
+  const gasHit = /lng|lpg|gas|vlgc|vlac|ethane/.test(desc);
+  const containerHit = /container|containership|liner/.test(desc);
+  if (gasHit && firm.Tanker_Pct >= 60 && firm.DryBulk_Pct <= 10) return "Gas";
+  if (firm.DryBulk_4_Pct >= 60 || firm.DryBulk_Pct >= 60) return "Dry bulk";
+  if (containerHit && !gasHit && firm.Tanker_Pct < 40 && firm.DryBulk_Pct < 40) return "Container";
+  if (firm.Tanker_4_Pct >= 60 || firm.Tanker_Pct >= 60) return "Tanker";
+  if (gasHit) return "Gas";
+  if (containerHit) return "Container";
+  return "Mixed / review";
+}
+
+function primaryTypeFromFleet(fleet) {
+  if (!fleet?.Total) return null;
+  const counts = {
+    Gas: fleet["Gas carrier"] ?? 0,
+    "Dry bulk": fleet["Dry bulk"] ?? 0,
+    Container: fleet.Container ?? 0,
+    Tanker: fleet.Tanker ?? 0,
+  };
+  const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
+  if (!total) return null;
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!sorted[0][1]) return null;
+  if (sorted[1]?.[1] && sorted[0][1] === sorted[1][1]) return "Mixed / review";
+  if (sorted[0][1] / total < 0.5) return "Mixed / review";
+  return sorted[0][0];
+}
+
+function primaryTypeForEntry(entry) {
+  return primaryTypeFromFleet(entry?.fleet) ?? primaryTypeFromFirm(entry?.firm) ?? "Mixed / review";
+}
+
+function primaryTypeDetail(entry) {
+  const fromFleet = primaryTypeFromFleet(entry?.fleet);
+  if (fromFleet) return `공식 선대수 기준 · ${PRIMARY_4_LABEL[fromFleet] ?? fromFleet}`;
+  const firm = entry?.firm;
+  if (!firm) return "주력 선종 미확인";
+  const values = [
+    ["Gas", firm.Gas_Pct],
+    ["Dry bulk", firm.DryBulk_4_Pct],
+    ["Container", firm.Container_Pct],
+    ["Tanker", firm.Tanker_4_Pct],
+  ]
+    .filter(([, value]) => Number.isFinite(value) && value > 0)
+    .map(([label, value]) => `${PRIMARY_4_LABEL[label] ?? label} ${fmtPct(value)}`)
+    .join(" · ");
+  return values || firm.Ship_Type_4_Note || "Firm_Master 텍스트 기준";
+}
+
 function buildCompanyDirectory() {
   const directory = new Map();
 
@@ -487,8 +578,7 @@ function directoryRows() {
       if (!entry.fleet) return false;
       return state.activeShipType === "All" || (entry.fleet[state.activeShipType] ?? 0) > 0;
     }
-    if (!entry.firm) return false;
-    return state.activeCoreGroup === "all" || entry.firm.Decision_Group === state.activeCoreGroup;
+    return state.activeCoreGroup === "all" || primaryTypeForEntry(entry) === state.activeCoreGroup;
   });
 
   return rows.filter((entry) => {
@@ -530,6 +620,15 @@ function groupCounts(rows) {
   return counts;
 }
 
+function primaryTypeCounts(entries = buildCompanyDirectory()) {
+  const counts = Object.fromEntries(PRIMARY_4_ORDER.map((label) => [label, 0]));
+  entries.forEach((entry) => {
+    const primary = primaryTypeForEntry(entry);
+    counts[primary] = (counts[primary] ?? 0) + 1;
+  });
+  return counts;
+}
+
 function median(values) {
   const nums = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
   if (!nums.length) return null;
@@ -540,6 +639,8 @@ function median(values) {
 function renderKpis(rows) {
   const all = state.firms.map(attachComputed);
   const counts = groupCounts(all);
+  const directory = buildCompanyDirectory();
+  const primaryCounts = primaryTypeCounts(directory);
   const included = counts["Tanker core"] + counts["Dry bulk core"];
   const avgPurity =
     included > 0
@@ -549,11 +650,12 @@ function renderKpis(rows) {
       : null;
   const financeCoverage = buildCompanyDirectory().filter((entry) => valuationForEntry(entry).finance).length;
   const items = [
-    ["전체 표본", state.firms.length],
-    ["탱커 주력", counts["Tanker core"]],
-    ["벌커 주력", counts["Dry bulk core"]],
-    ["혼합·제외", counts["Mixed / review"] + counts.Excluded],
-    ["평균 순도", avgPurity === null ? "-" : fmtPct(avgPurity)],
+    ["전체 회사", directory.length],
+    ["가스", primaryCounts.Gas],
+    ["Dry bulk", primaryCounts["Dry bulk"]],
+    ["Container", primaryCounts.Container],
+    ["Tanker", primaryCounts.Tanker],
+    ["혼합·검토", primaryCounts["Mixed / review"]],
   ];
 
   const strip = $("kpiStrip");
@@ -569,7 +671,7 @@ function renderKpis(rows) {
   $("dataStatus").textContent = `표본 ${state.firms.length}개 · 표시 ${rows.length}개`;
   $("financeStatus").textContent =
     `가치평가 입력 ${financeCoverage}개${state.financeLoadedFrom ? ` · ${state.financeLoadedFrom}` : ""}`;
-  $("includedLabel").textContent = `분석 포함 ${included}개`;
+  $("includedLabel").textContent = `탱커·벌커 연구 포함 ${included}개 · 평균 순도 ${avgPurity === null ? "-" : fmtPct(avgPurity)}`;
 }
 
 function renderValuation(rows) {
@@ -1502,13 +1604,15 @@ function renderSourceLink(row) {
 }
 
 function coreCategoryItems() {
-  const counts = groupCounts(state.firms.map(attachComputed));
+  const directory = buildCompanyDirectory();
+  const counts = primaryTypeCounts(directory);
   return [
-    ["all", "전체", state.firms.length],
-    ["Tanker core", "탱커 주력", counts["Tanker core"]],
-    ["Dry bulk core", "벌커 주력", counts["Dry bulk core"]],
+    ["all", "전체", directory.length],
+    ["Gas", "가스 주력", counts.Gas],
+    ["Dry bulk", "Dry bulk 주력", counts["Dry bulk"]],
+    ["Container", "Container 주력", counts.Container],
+    ["Tanker", "Tanker 주력", counts.Tanker],
     ["Mixed / review", "혼합·검토", counts["Mixed / review"]],
-    ["Excluded", "제외", counts.Excluded],
   ];
 }
 
@@ -1556,8 +1660,8 @@ function renderDirectoryWorkflow() {
     button.addEventListener("click", () => {
       state.directoryMode = "core";
       state.activeCoreGroup = button.dataset.directoryCore;
-      state.filter = state.activeCoreGroup;
-      $("groupFilter").value = state.activeCoreGroup;
+      state.filter = "all";
+      $("groupFilter").value = "all";
       render();
     });
   });
@@ -1584,8 +1688,9 @@ function renderDirectoryWorkflow() {
           const detail =
             state.directoryMode === "shipType"
               ? fleetListMeta(entry)
-              : entry.firm?.Decision_Reason || fleetListMeta(entry);
-          const badge = entry.firm?.Decision_Label ?? "선대자료";
+              : primaryTypeDetail(entry);
+          const primary = primaryTypeForEntry(entry);
+          const badge = `${PRIMARY_4_LABEL[primary] ?? primary} 주력`;
           return `
             <button type="button" class="company-list-item ${entry.key === state.selectedCompanyKey ? "active" : ""}" data-select-company="${escapeHtml(entry.key)}">
               <strong>${escapeHtml(entry.Company_Name)}</strong>
@@ -1619,8 +1724,10 @@ function fleetListMeta(entry) {
 }
 
 function badgeClass(group) {
-  if (group === "Tanker core") return "tanker";
-  if (group === "Dry bulk core") return "bulk";
+  if (group === "Tanker core" || group === "Tanker") return "tanker";
+  if (group === "Dry bulk core" || group === "Dry bulk") return "bulk";
+  if (group === "Gas") return "gas";
+  if (group === "Container") return "container";
   if (group === "Excluded") return "excluded";
   return "mixed";
 }
@@ -1632,6 +1739,7 @@ function renderTable(rows) {
       (row) => `
       <tr>
         <td><span class="badge ${badgeClass(row.Decision_Group)}">${row.Decision_Label}</span></td>
+        <td><span class="badge ${badgeClass(primaryTypeFromFirm(row))}">${escapeHtml(PRIMARY_4_LABEL[primaryTypeFromFirm(row)] ?? primaryTypeFromFirm(row))}</span></td>
         <td class="company-cell">
           <button class="company-name-button" type="button" data-select-company="${escapeHtml(companyKey(row))}">
             <strong>${escapeHtml(row.Company_Name)}</strong>
@@ -1639,10 +1747,12 @@ function renderTable(rows) {
           </button>
         </td>
         <td>${escapeHtml(row.RIC)}</td>
-        <td class="number">${fmtPct(row.Tanker_Pct)}</td>
-        <td class="number">${fmtPct(row.DryBulk_Pct)}</td>
+        <td class="number">${fmtPct(row.Gas_Pct)}</td>
+        <td class="number">${fmtPct(row.DryBulk_4_Pct)}</td>
+        <td class="number">${fmtPct(row.Container_Pct)}</td>
+        <td class="number">${fmtPct(row.Tanker_4_Pct)}</td>
         <td>${escapeHtml(row.Segment)}</td>
-        <td class="reason-cell">${escapeHtml(row.Decision_Reason)}<br>${escapeHtml(row.Verdict_Fleet_Description)}</td>
+        <td class="reason-cell">${escapeHtml(row.Ship_Type_4_Note || row.Decision_Reason)}<br>${escapeHtml(row.Verdict_Fleet_Description)}</td>
         <td class="number">${fmtMultiple(row.EV_EBITDA)}</td>
         <td><button class="row-action" type="button" data-dataroom="${escapeHtml(row.RIC)}">자료실</button></td>
       </tr>
@@ -1875,8 +1985,16 @@ function classificationRows() {
     Company_Name: row.Company_Name,
     RIC: row.RIC,
     Decision_Group: row.Decision_Label,
-    Tanker_Pct: row.Tanker_Pct,
-    DryBulk_Pct: row.DryBulk_Pct,
+    Primary_Ship_Type_4: primaryTypeFromFirm(row),
+    Gas_Pct: row.Gas_Pct,
+    DryBulk_4_Pct: row.DryBulk_4_Pct,
+    Container_Pct: row.Container_Pct,
+    Tanker_4_Pct: row.Tanker_4_Pct,
+    Legacy_Tanker_Pct: row.Tanker_Pct,
+    Legacy_DryBulk_Pct: row.DryBulk_Pct,
+    Secondary_Ship_Types: row.Secondary_Ship_Types,
+    Ship_Type_4_Source: row.Ship_Type_4_Source,
+    Ship_Type_4_Note: row.Ship_Type_4_Note,
     Segment: row.Segment,
     Decision_Reason: row.Decision_Reason,
     EV_EBITDA: row.EV_EBITDA,
@@ -1935,6 +2053,7 @@ function exportFleetSummary() {
 function buildBriefText() {
   const all = state.firms.map(attachComputed);
   const counts = groupCounts(all);
+  const primaryCounts = primaryTypeCounts();
   const fleetSummary = buildFleetSummary();
   const fleetVesselCount = fleetSummary.reduce((sum, row) => sum + row.Total, 0);
   const sourceMode = state.fleetRecords.length ? "업로드 원장" : "공식 출처 기반 공개자료";
@@ -1946,12 +2065,15 @@ function buildBriefText() {
     `- 벌커 주력: ${counts["Dry bulk core"]}`,
     `- 혼합·검토: ${counts["Mixed / review"]}`,
     `- 제외: ${counts.Excluded}`,
+    `- 4대 주력 분류: Gas ${primaryCounts.Gas} / Dry bulk ${primaryCounts["Dry bulk"]} / Container ${primaryCounts.Container} / Tanker ${primaryCounts.Tanker} / Mixed ${primaryCounts["Mixed / review"]}`,
     `- 선대 자료 기준: ${sourceMode}`,
     `- 선대 집계 선박 수: ${fleetVesselCount}`,
     `- 선대 집계 회사 수: ${fleetSummary.length}`,
     "",
     "## 현재 판정 기준",
     "",
+    "- 4대 주력 분류: Gas, Dry bulk, Container, Tanker를 별도 컬럼으로 분리한다.",
+    "- LNG/LPG/gas carrier는 legacy Tanker_%에 들어 있어도 Gas 주력으로 별도 표시한다.",
     `- 탱커 주력: Tanker_% >= ${state.thresholds.tanker}% 및 DryBulk_% <= ${state.thresholds.opposite}%`,
     `- 벌커 주력: DryBulk_% >= ${state.thresholds.bulk}% 및 Tanker_% <= ${state.thresholds.opposite}%`,
     "- 원자료 설명에 EXCLUDE, insufficient trading data, combination carrier가 있으면 제외",
@@ -2707,6 +2829,7 @@ function buildResearchPackText() {
   const quality = dataQualityMetrics();
   const topic = selectedTopic();
   const counts = groupCounts(quality.all);
+  const primaryCounts = primaryTypeCounts();
   const searchLinks = researchSearchLinks(topic);
   const lines = [
     "# 해운사 선종 구분 및 기업가치평가 논문 패키지",
@@ -2733,6 +2856,7 @@ function buildResearchPackText() {
     `- 벌커 주력: ${counts["Dry bulk core"]}`,
     `- 혼합·검토: ${counts["Mixed / review"]}`,
     `- 제외: ${counts.Excluded}`,
+    `- 4대 주력 분류: Gas ${primaryCounts.Gas} / Dry bulk ${primaryCounts["Dry bulk"]} / Container ${primaryCounts.Container} / Tanker ${primaryCounts.Tanker} / Mixed ${primaryCounts["Mixed / review"]}`,
     `- 선대 자료: ${quality.sourceMode} ${quality.vesselCount}척 / ${quality.fleetSummary.length}개 회사`,
     `- verified 선대 출처: ${quality.verified}개 회사`,
     `- review 선대 출처: ${quality.review}개 회사`,
@@ -2812,6 +2936,7 @@ function buildThesisDraftText() {
   const quality = dataQualityMetrics();
   const rows = analysisDataset();
   const counts = groupCounts(quality.all);
+  const primaryCounts = primaryTypeCounts();
   const method = analysisMethodLabel(state.activeAnalysisMethod);
   const interpretation = rows.length ? methodInterpretation(rows) : "재무 입력이 부족해 분석 결과를 계산하지 못했습니다.";
   const resultTable = rows.length ? buildCoreResultMarkdown(rows) : ["재무 입력 후 결과표가 생성됩니다."];
@@ -2837,7 +2962,7 @@ function buildThesisDraftText() {
     "",
     "## 3. 데이터와 표본",
     "",
-    `본 연구의 기본 분류 표본은 ${state.firms.length}개 상장 해운사이며, 현재 판정 기준에서 탱커 주력 ${counts["Tanker core"]}개, 벌커 주력 ${counts["Dry bulk core"]}개, 혼합·검토 ${counts["Mixed / review"]}개, 제외 ${counts.Excluded}개로 구분된다. 선대 자료는 회사 공식 fleet page, 연차보고서, SEC filing 등 공개 출처를 사용하며, 각 행에는 기준일, 산정 기준, Source_Status를 기록한다.`,
+    `본 연구의 기본 분류 표본은 ${state.firms.length}개 상장 해운사이며, 4대 주력 선종 기준으로 Gas ${primaryCounts.Gas}개, Dry bulk ${primaryCounts["Dry bulk"]}개, Container ${primaryCounts.Container}개, Tanker ${primaryCounts.Tanker}개, 혼합·검토 ${primaryCounts["Mixed / review"]}개로 구분된다. 탱커/벌커 회귀용 판정 기준에서는 탱커 주력 ${counts["Tanker core"]}개, 벌커 주력 ${counts["Dry bulk core"]}개, 혼합·검토 ${counts["Mixed / review"]}개, 제외 ${counts.Excluded}개다. 선대 자료는 회사 공식 fleet page, 연차보고서, SEC filing 등 공개 출처를 사용하며, 각 행에는 기준일, 산정 기준, Source_Status를 기록한다.`,
     "",
     "## 4. 방법론",
     "",
@@ -3073,8 +3198,10 @@ function buildCompanyResearchNote(entry) {
     `# ${entry.Company_Name} 연구 노트`,
     "",
     `- RIC: ${entry.RIC || "미확인"}`,
-    `- 주력 분류: ${firm?.Decision_Label ?? "기본 55개 표본 밖 / 별도 검토"}`,
-    `- 분류 근거: ${firm?.Decision_Reason ?? "공식 선대 자료 기준으로만 확인"}`,
+    `- 4대 주력 분류: ${PRIMARY_4_LABEL[primaryTypeForEntry(entry)] ?? primaryTypeForEntry(entry)}`,
+    `- 4대 분류 근거: ${primaryTypeDetail(entry)}`,
+    `- 탱커/벌커 연구 판정: ${firm?.Decision_Label ?? "기본 55개 표본 밖 / 별도 검토"}`,
+    `- 탱커/벌커 판정 근거: ${firm?.Decision_Reason ?? "공식 선대 자료 기준으로만 확인"}`,
     `- 전체 선대: ${fleet ? `${fmtNumber(fleet.Total)}척` : "미확인"}`,
     `- 탱커: ${fleet ? fmtNumber(fleet.Tanker) : "미확인"}`,
     `- 벌커: ${fleet ? fmtNumber(fleet["Dry bulk"]) : "미확인"}`,
@@ -3147,8 +3274,9 @@ function renderCompanyDashboard() {
   const valuation = valuationForEntry(entry);
   const finance = valuation.finance;
   const reliability = financeReliability(entry);
+  const primary = primaryTypeForEntry(entry);
   $("selectedCompanyName").textContent = entry.Company_Name;
-  $("selectedCompanySubtitle").textContent = `${entry.RIC || "RIC 미확인"} · ${firm?.Decision_Label ?? "공식 선대자료"} · ${fleet?.Basis ?? "선대 기준 확인 필요"}`;
+  $("selectedCompanySubtitle").textContent = `${entry.RIC || "RIC 미확인"} · ${PRIMARY_4_LABEL[primary] ?? primary} 주력 · ${fleet?.Basis ?? "선대 기준 확인 필요"}`;
   $("selectedCompanyStatus").textContent = fleet?.Source_Status
     ? `${fleet.Source_Status} · ${fleet.As_Of || "기준일 확인"}`
     : "선대 출처 미확인";
@@ -3202,8 +3330,9 @@ function renderCompanyDashboard() {
   $("companyDashboard").innerHTML = `
     <div class="company-summary-grid">
       <div class="company-overview">
-        <span class="badge ${firm ? badgeClass(firm.Decision_Group) : "mixed"}">${escapeHtml(firm?.Decision_Label ?? "선대자료")}</span>
-        <p>${escapeHtml(firm?.Decision_Reason ?? "기본 표본에는 없지만 공식 공개자료 기반 선대 수가 연결된 상장 해운사입니다.")}</p>
+        <span class="badge ${badgeClass(primary)}">${escapeHtml(PRIMARY_4_LABEL[primary] ?? primary)} 주력</span>
+        <p>${escapeHtml(primaryTypeDetail(entry))}</p>
+        <p class="helper-text">${escapeHtml(firm?.Decision_Reason ?? "기본 표본에는 없지만 공식 공개자료 기반 선대 수가 연결된 상장 해운사입니다.")}</p>
         <div class="company-actions">
           <button type="button" data-company-action="links">자료실</button>
           <button type="button" data-company-action="note">연구노트</button>
@@ -3248,7 +3377,7 @@ function renderCompanyDashboard() {
         <h3>논문 작성 메모</h3>
         <div class="note-box">
           <p>${escapeHtml(fleet ? `${fleet.Source_Status || "review"} 상태 자료입니다. ${fleet.Basis || "산정 기준"} 기준으로 ${fleet.As_Of || "기준일"}에 확인된 선대 수를 사용합니다.` : "선대 원장 또는 공식 fleet page 확인이 필요합니다.")}</p>
-          <p>${escapeHtml(firm ? `${firm.Decision_Label} 표본으로 분류됩니다. peer group 비교에서는 같은 기준으로 재무 입력과 선대 기준일을 맞춰야 합니다.` : "기본 55개 표본 밖 회사이므로 주력 선종 분류를 별도 확정해야 합니다.")}</p>
+          <p>${escapeHtml(`4대 주력 분류는 ${PRIMARY_4_LABEL[primary] ?? primary}입니다. 탱커/벌커 회귀 표본 판정은 ${firm?.Decision_Label ?? "별도 검토"}로 관리합니다.`)}</p>
         </div>
       </section>
     </div>
@@ -3298,8 +3427,8 @@ function showDirectoryDataroom(key) {
     type: "html",
     html: `
       <div class="dataroom-head">
-        <strong>${escapeHtml(entry.firm?.Decision_Label ?? "선대자료")}</strong>
-        <span>${escapeHtml(entry.firm?.Decision_Reason ?? fleetListMeta(entry))}</span>
+        <strong>${escapeHtml(PRIMARY_4_LABEL[primaryTypeForEntry(entry)] ?? primaryTypeForEntry(entry))} 주력</strong>
+        <span>${escapeHtml(primaryTypeDetail(entry))}</span>
       </div>
       <div class="link-list">
         ${links

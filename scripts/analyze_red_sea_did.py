@@ -150,11 +150,155 @@ CANONICAL_COLUMNS = {
     "Beta (Refinitiv)": "Beta_Refinitiv",
 }
 
+SHIP_TYPE_4_HEADERS = [
+    "Primary_Ship_Type_4",
+    "Gas_%",
+    "DryBulk_4_%",
+    "Container_%",
+    "Tanker_4_%",
+    "Secondary_Ship_Types",
+    "Ship_Type_4_Source",
+    "Ship_Type_4_Note",
+]
+
+GAS_TERMS = ("lng", "lpg", "gas", "vlgc", "vlac", "ethane", "ammonia carrier")
+DRY_BULK_TERMS = ("dry bulk", "bulker", "bulk carrier", "vloc")
+CONTAINER_TERMS = ("container", "containership", "liner")
+TANKER_TERMS = ("tanker", "vlcc", "aframax", "suezmax", "product", "crude", "chemical", "parcel")
+
+
+def as_float(value: Any) -> float:
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return number if math.isfinite(number) else 0.0
+
+
+def has_term(text: str, terms: tuple[str, ...]) -> bool:
+    return any(term in text for term in terms)
+
+
+def infer_ship_type_4_values(desc_raw: Any, segment_raw: Any, tanker_value: Any, dry_bulk_value: Any) -> dict[str, Any]:
+    desc = str(desc_raw or "").strip()
+    segment = str(segment_raw or "").strip()
+    text = f"{desc} {segment}".lower()
+    tanker = as_float(tanker_value)
+    dry_bulk = as_float(dry_bulk_value)
+    excluded = (
+        "exclude" in text
+        or "insufficient trading data" in text
+        or "combination carrier" in text
+        or "mixed" in text
+    )
+
+    gas_hit = has_term(text, GAS_TERMS)
+    dry_hit = has_term(text, DRY_BULK_TERMS) or dry_bulk > 0
+    container_hit = has_term(text, CONTAINER_TERMS)
+    tanker_hit = has_term(text, TANKER_TERMS) or tanker > 0
+    pure = "pure-play" in text
+    predominant = "predominantly" in text
+
+    gas_pct = 0.0
+    container_pct = 0.0
+    dry_bulk_4 = dry_bulk
+    tanker_4 = tanker
+    notes: list[str] = []
+
+    if gas_hit and tanker >= 60 and dry_bulk <= 10 and (pure or "lng" in text or "lpg" in text or "gas/" in text):
+        gas_pct = tanker
+        tanker_4 = 0.0
+        notes.append("Gas exposure split out from legacy Tanker_% research bucket.")
+    elif gas_hit and dry_bulk >= 60:
+        notes.append("Gas exposure mentioned as secondary; dry-bulk remains primary because DryBulk_% is dominant.")
+    elif gas_hit:
+        notes.append("Gas exposure identified from LNG/LPG/gas wording; exact percentage not available in Firm_Master.")
+
+    if container_hit and not excluded and not tanker_hit and not dry_hit and not gas_hit:
+        container_pct = 100.0
+    elif container_hit:
+        notes.append("Container exposure mentioned as secondary or mixed; exact percentage not available in Firm_Master.")
+
+    scores = {
+        "Gas": gas_pct,
+        "Dry bulk": dry_bulk_4,
+        "Container": container_pct,
+        "Tanker": tanker_4,
+    }
+    primary = max(scores, key=scores.get)
+    if excluded:
+        primary = "Mixed / review"
+    elif scores[primary] == 0:
+        if gas_hit:
+            primary = "Gas"
+        elif container_hit:
+            primary = "Container"
+        elif predominant and dry_hit:
+            primary = "Dry bulk"
+        elif tanker_hit:
+            primary = "Tanker"
+        else:
+            primary = "Mixed / review"
+
+    secondary = []
+    for label, hit in [
+        ("Gas", gas_hit),
+        ("Dry bulk", dry_hit),
+        ("Container", container_hit),
+        ("Tanker", tanker_hit),
+    ]:
+        if hit and label != primary:
+            secondary.append(label)
+
+    if not notes:
+        notes.append("Primary type inferred from dominant percentage or pure-play description.")
+
+    return {
+        "Primary_Ship_Type_4": primary,
+        "Gas_%": gas_pct,
+        "DryBulk_4_%": dry_bulk_4,
+        "Container_%": container_pct,
+        "Tanker_4_%": tanker_4,
+        "Secondary_Ship_Types": "; ".join(secondary),
+        "Ship_Type_4_Source": "Firm_Master text + Tanker_%/DryBulk_%; official fleet ledger overrides when available",
+        "Ship_Type_4_Note": " ".join(notes),
+    }
+
 
 def read_sheet(path: Path, sheet: str) -> pd.DataFrame:
     df = pd.read_excel(path, sheet_name=sheet, header=2)
     df.columns = [CANONICAL_COLUMNS.get(clean_col(col), clean_col(col)) for col in df.columns]
     return df
+
+
+def firm_ship_type_4_lookup(path: Path) -> dict[str, dict[str, Any]]:
+    fm = read_sheet(path, "Firm_Master")
+    lookup: dict[str, dict[str, Any]] = {}
+    for _, row in fm.dropna(subset=["RIC"]).iterrows():
+        item = infer_ship_type_4_values(
+            row.get("Verdict / Fleet Description"),
+            row.get("Segment"),
+            row.get("Tanker_%"),
+            row.get("DryBulk_%"),
+        )
+        lookup[str(row["RIC"])] = item
+    return lookup
+
+
+def apply_ship_type_4_sample(df: pd.DataFrame, path: Path) -> pd.DataFrame:
+    """Use four-way primary type to keep Gas/Container outside tanker-bulk DiD."""
+    if "RIC" not in df.columns:
+        return df
+    lookup = firm_ship_type_4_lookup(path)
+    out = df.copy()
+    primary = out["RIC"].astype(str).map(lambda ric: lookup.get(ric, {}).get("Primary_Ship_Type_4"))
+    out["Primary_Ship_Type_4"] = primary
+    out["Treat"] = primary.eq("Tanker").astype(int)
+    out["Control"] = primary.eq("Dry bulk").astype(int)
+    out["Include"] = primary.isin(["Tanker", "Dry bulk"]).astype(int)
+    if "Post" in out.columns:
+        out["Treat_Post"] = out["Treat"] * to_num(out["Post"]).fillna(0)
+    return out
 
 
 def to_num(series: pd.Series) -> pd.Series:
@@ -314,14 +458,14 @@ def audit_formulas(path: Path) -> list[dict[str, Any]]:
 
 def workbook_audit(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     xl = pd.ExcelFile(path)
-    fm = read_sheet(path, "Firm_Master")
+    fm = apply_ship_type_4_sample(read_sheet(path, "Firm_Master"), path)
     price = read_sheet(path, "Price_Daily_Raw")
     fin = read_sheet(path, "Financials_Raw")
     market = read_sheet(path, "Market_Index_Raw")
     vix = read_sheet(path, "VIX_Raw")
     freight = read_sheet(path, "Freight_Context_Raw")
-    did = read_sheet(path, "DiD_Panel_Template")
-    car = read_sheet(path, "CAR_Calc_Template")
+    did = apply_ship_type_4_sample(read_sheet(path, "DiD_Panel_Template"), path)
+    car = apply_ship_type_4_sample(read_sheet(path, "CAR_Calc_Template"), path)
 
     checks: list[dict[str, Any]] = []
     checks.extend(audit_formulas(path))
@@ -386,7 +530,7 @@ def workbook_audit(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         "sheets": xl.sheet_names,
         "firm_count": int(len(fm.dropna(subset=["RIC"]))),
         "included_firms": included_firms,
-        "tanker_firms": int(to_num(fm.get("Treatment", pd.Series(dtype=float))).eq(1).sum()),
+        "tanker_firms": int(to_num(fm.get("Treat", fm.get("Treatment", pd.Series(dtype=float)))).eq(1).sum()),
         "control_firms": int(to_num(fm.get("Control", pd.Series(dtype=float))).eq(1).sum()),
         "price_observations": int(len(price.dropna(subset=["RIC"]))),
         "price_firms": int(price["RIC"].nunique()),
@@ -417,7 +561,7 @@ def workbook_audit(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
 
 
 def run_models(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    did = read_sheet(path, "DiD_Panel_Template")
+    did = apply_ship_type_4_sample(read_sheet(path, "DiD_Panel_Template"), path)
     did["Treat_Post"] = to_num(did.get("Treat_Post", did.get("TreatxPost", pd.Series(dtype=float))))
     if "Include" in did.columns:
         did = did[to_num(did["Include"]).eq(1)]
@@ -461,7 +605,7 @@ def run_models(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], 
             }
         )
 
-    car = read_sheet(path, "CAR_Calc_Template")
+    car = apply_ship_type_4_sample(read_sheet(path, "CAR_Calc_Template"), path)
     if "Include" in car.columns:
         car = car[to_num(car["Include"]).eq(1)]
     car_summary = []
@@ -504,8 +648,8 @@ def build_valuation_event_panel(path: Path) -> tuple[pd.DataFrame, list[dict[str
     """
     price = read_sheet(path, "Price_Daily_Raw")
     fin = read_sheet(path, "Financials_Raw")
-    fm = read_sheet(path, "Firm_Master")
-    did = read_sheet(path, "DiD_Panel_Template")
+    fm = apply_ship_type_4_sample(read_sheet(path, "Firm_Master"), path)
+    did = apply_ship_type_4_sample(read_sheet(path, "DiD_Panel_Template"), path)
 
     price["Date"] = pd.to_datetime(price["Date"], errors="coerce")
     fin["Report_Date"] = pd.to_datetime(fin.get("Report_Date"), errors="coerce")
@@ -744,7 +888,7 @@ def write_stata_package(
     valuation_summary: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    did = read_sheet(path, "DiD_Panel_Template")
+    did = apply_ship_type_4_sample(read_sheet(path, "DiD_Panel_Template"), path)
     did["Treat_Post"] = to_num(did.get("Treat_Post", pd.Series(dtype=float)))
     if "Include" in did.columns:
         did = did[to_num(did["Include"]).eq(1)].copy()
@@ -777,7 +921,7 @@ def write_stata_package(
     did_csv = output_dir / "red_sea_did_panel.csv"
     did_out.to_csv(did_csv, index=False)
 
-    car = read_sheet(path, "CAR_Calc_Template")
+    car = apply_ship_type_4_sample(read_sheet(path, "CAR_Calc_Template"), path)
     if "Include" in car.columns:
         car = car[to_num(car["Include"]).eq(1)].copy()
     car_out = stata_safe_columns(car)
@@ -1182,15 +1326,27 @@ def write_completed_source_workbook(
 
     if "Firm_Master" in wb.sheetnames:
         ws = wb["Firm_Master"]
+        for offset, header in enumerate(SHIP_TYPE_4_HEADERS, start=20):
+            ws.cell(3, offset).value = header
+            ws.cell(3, offset).font = Font(bold=True)
+            ws.cell(3, offset).fill = PatternFill("solid", fgColor="E0F2FE")
         for row in range(4, ws.max_row + 1):
             if ws.cell(row, 3).value in (None, ""):
                 continue
-            ws.cell(row, 8).value = f'=IF(F{row}>=60,1,0)'
-            ws.cell(row, 9).value = f'=IF(AND(G{row}>=70,F{row}<=20),1,0)'
+            ws.cell(row, 8).value = f'=IF(X{row}>=60,1,0)'
+            ws.cell(row, 9).value = f'=IF(AND(V{row}>=70,X{row}<=20),1,0)'
             ws.cell(row, 10).value = f'=IF(OR(H{row}=1,I{row}=1),1,0)'
             ws.cell(row, 11).value = f'=IFERROR(INDEX(Financials_Raw!$L:$L,MATCH($C{row},Financials_Raw!$A:$A,0)),"")'
             ws.cell(row, 12).value = f'=IFERROR(INDEX(Financials_Raw!$M:$M,MATCH($C{row},Financials_Raw!$A:$A,0)),"")'
             ws.cell(row, 13).value = f'=IFERROR(INDEX(Financials_Raw!$N:$N,MATCH($C{row},Financials_Raw!$A:$A,0)),"")'
+            ship_type_4 = infer_ship_type_4_values(
+                ws.cell(row, 4).value,
+                ws.cell(row, 5).value,
+                ws.cell(row, 6).value,
+                ws.cell(row, 7).value,
+            )
+            for col, header in enumerate(SHIP_TYPE_4_HEADERS, start=20):
+                ws.cell(row, col).value = ship_type_4[header]
 
     if "CAR_Calc_Template" in wb.sheetnames:
         ws = wb["CAR_Calc_Template"]
@@ -1234,9 +1390,10 @@ def write_completed_source_workbook(
             ["추가 1", "Data_Audit_Fixes", "논문 전 반드시 확인할 데이터 오류와 수정 지시입니다."],
             ["추가 2", "Regression_Results", "Python 예비 DiD 결과입니다. 최종 논문 표는 Stata 재실행 결과로 확정하세요."],
             ["추가 3", "Valuation_Reaction", "Market Cap/EV/EV-EBITDA/P-B 이벤트 전후 반응을 검증용으로 계산했습니다."],
-            ["추가 4", "Bloomberg_Grade_Ledger", "Bloomberg/LSEG/Refinitiv 최종 원장으로 교체할 때 필요한 필드와 정확도 등급입니다."],
-            ["추가 5", "A_Grade_Checklist", "주가·운임·재무·밸류에이션별 A급 소스와 공식 파생 기준을 고정했습니다."],
-            ["추가 6", "Stata_Instructions", "Windows/LG 노트북에서 실행하는 방법입니다."],
+            ["추가 4", "Ship_Type_4_Classification", "Gas / Dry bulk / Container / Tanker 주력 분류를 별도 시트로 만들었습니다."],
+            ["추가 5", "Bloomberg_Grade_Ledger", "Bloomberg/LSEG/Refinitiv 최종 원장으로 교체할 때 필요한 필드와 정확도 등급입니다."],
+            ["추가 6", "A_Grade_Checklist", "주가·운임·재무·밸류에이션별 A급 소스와 공식 파생 기준을 고정했습니다."],
+            ["추가 7", "Stata_Instructions", "Windows/LG 노트북에서 실행하는 방법입니다."],
             ["주의", "라이선스 데이터 포함 가능", "Bloomberg/Refinitiv/LSEG/Clarksons 원자료는 공개 GitHub에 올리지 마세요."],
         ],
     )
@@ -1304,6 +1461,44 @@ def write_completed_source_workbook(
                 row.get("ev_ebitda_change"),
                 row.get("pb_change"),
                 explanation,
+            ]],
+        )
+
+    ws = reset_sheet(wb, "Ship_Type_4_Classification")
+    append_rows(
+        ws,
+        [[
+            "Firm_ID",
+            "Company_Name",
+            "RIC",
+            "Segment",
+            "Legacy_Tanker_%",
+            "Legacy_DryBulk_%",
+            *SHIP_TYPE_4_HEADERS,
+            "Verdict / Fleet Description",
+        ]],
+    )
+    firm_ws = wb["Firm_Master"]
+    for row in range(4, firm_ws.max_row + 1):
+        if firm_ws.cell(row, 3).value in (None, ""):
+            continue
+        ship_type_4 = infer_ship_type_4_values(
+            firm_ws.cell(row, 4).value,
+            firm_ws.cell(row, 5).value,
+            firm_ws.cell(row, 6).value,
+            firm_ws.cell(row, 7).value,
+        )
+        append_rows(
+            ws,
+            [[
+                firm_ws.cell(row, 1).value,
+                firm_ws.cell(row, 2).value,
+                firm_ws.cell(row, 3).value,
+                firm_ws.cell(row, 5).value,
+                firm_ws.cell(row, 6).value,
+                firm_ws.cell(row, 7).value,
+                *[ship_type_4[header] for header in SHIP_TYPE_4_HEADERS],
+                firm_ws.cell(row, 4).value,
             ]],
         )
 
@@ -1382,6 +1577,7 @@ def write_completed_source_workbook(
         "Regression_Results",
         "CAR_Summary_Completed",
         "Valuation_Reaction",
+        "Ship_Type_4_Classification",
         "Valuation_Event_Panel",
         "Bloomberg_Grade_Ledger",
         "A_Grade_Checklist",
@@ -1400,6 +1596,7 @@ def write_completed_source_workbook(
         "actions": [
             "Fixed Firm_Master control formulas",
             "Filled CAR_Calc_Template metadata formulas",
+            "Added Gas / Dry bulk / Container / Tanker four-way classification",
             "Added audit, regression, valuation, source, Stata, and thesis-note sheets",
         ],
     }
@@ -1470,6 +1667,7 @@ def write_thesis_draft_file(payload: dict[str, Any], output_dir: Path) -> dict[s
 - 원본 모델링 파일: Red_Sea_DiD_Model_drafting.xlsx
 - 완성본 모델링 파일: Red_Sea_DiD_Model_completed.xlsx
 - Stata 실행 폴더: red_sea_stata_package
+- 선종 분류 시트: Ship_Type_4_Classification (Gas / Dry bulk / Container / Tanker 분리)
 - 가격 데이터 기간: {payload['summary']['price_date_min']} ~ {payload['summary']['price_date_max']}
 - 주가 관측치: {payload['summary']['price_observations']:,}
 - DiD 패널 관측치: {payload['summary']['did_rows']:,}

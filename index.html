@@ -40,7 +40,7 @@
           </div>
 
           <div class="control-block">
-            <label for="groupFilter">판정표 필터</label>
+            <label for="groupFilter">탱커/벌커 회귀 필터</label>
             <select id="groupFilter">
               <option value="all">전체</option>
               <option value="Tanker core">탱커 주력</option>
@@ -111,7 +111,8 @@
               <li>기본 표본은 자동으로 열립니다.</li>
               <li>선종 분류 또는 주력 분류를 누르면 회사 목록이 바뀝니다.</li>
               <li>회사 이름을 누르면 오른쪽 대시보드가 해당 회사 중심으로 바뀝니다.</li>
-              <li>선종 분류는 벌크·탱커·컨테이너·가스·일반화물·오프쇼어·여객·기타까지 함께 봅니다.</li>
+              <li>주력 분류는 가스·Dry bulk·Container·Tanker를 따로 봅니다.</li>
+              <li>선종 분류는 가스·벌크·컨테이너·탱커·일반화물·오프쇼어·여객·기타까지 함께 봅니다.</li>
               <li>슬라이더로 주력 선종 기준을 조절합니다.</li>
               <li>IMO 단위 선대 원장은 선대 템플릿 형식으로 불러옵니다.</li>
               <li>입력 템플릿에 재무값을 채운 뒤 CSV로 불러옵니다.</li>
@@ -245,11 +246,14 @@
               <table>
                 <thead>
                   <tr>
-                    <th>판정</th>
+                    <th>회귀판정</th>
+                    <th>4대 주력</th>
                     <th>회사</th>
                     <th>RIC</th>
+                    <th>가스</th>
+                    <th>Dry bulk</th>
+                    <th>Container</th>
                     <th>탱커</th>
-                    <th>벌커</th>
                     <th>원분류</th>
                     <th>근거</th>
                     <th>EV/EBITDA</th>

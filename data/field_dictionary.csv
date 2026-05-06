@@ -6,6 +6,14 @@ Verdict_Fleet_Description,Yes,Fleet description and inclusion/exclusion note
 Segment,Yes,Original candidate segment label
 Tanker_Pct,Yes,Estimated tanker fleet exposure percentage
 DryBulk_Pct,Yes,Estimated dry bulk fleet exposure percentage
+Primary_Ship_Type_4,Yes,Separated primary ship type: Gas / Dry bulk / Container / Tanker / Mixed review
+Gas_Pct,No,Separated gas carrier exposure percentage inferred from LNG/LPG/gas wording when source percentage is available
+DryBulk_4_Pct,No,Dry bulk exposure used in the four-way primary classification
+Container_Pct,No,Separated container exposure percentage when source percentage is available
+Tanker_4_Pct,No,Tanker exposure after splitting LNG/LPG/gas carriers out of the legacy Tanker_Pct bucket
+Secondary_Ship_Types,No,Other ship types mentioned in the source description without enough percentage detail for primary classification
+Ship_Type_4_Source,No,Rule or source used for the four-way ship type classification
+Ship_Type_4_Note,No,Audit note explaining why gas/container/dry bulk/tanker was assigned
 Research_Group,No,Original research grouping generated from source workbook
 Included,No,Original inclusion flag generated from source workbook
 Exclude_Reason,No,Original exclusion reason generated from source workbook
@@ -23,6 +31,8 @@ Book_Equity,No,Book equity
 Fleet_Total,No,Total fleet vessel count
 Fleet_Tankers,No,Tanker vessel count
 Fleet_Bulkers,No,Dry bulk vessel count
+Fleet_Gas_Carriers,No,Gas carrier vessel count
+Fleet_Containers,No,Container vessel count
 DWT_Total,No,Total fleet DWT
 Source,No,Data source name or URL
 Source_Date,No,Source as-of date
